@@ -100,7 +100,8 @@ Usage: kokoro-tts <input_text_file> [<output_audio_file>] [options]
 Commands:
     -h, --help         Show this help message
     --help-languages   List all supported languages
-    --help-voices     List all available voices
+    --help-voices      List all available voices
+    --merge-chunks     Merge existing chunks in split-output directory into chapter files
 
 Options:
     --stream            Stream audio instead of saving to file
@@ -118,6 +119,7 @@ Examples:
     kokoro-tts input.txt output.wav --speed 1.2 --lang en-us --voice af_sarah
     kokoro-tts input.epub --split-output ./chunks/ --format mp3
     kokoro-tts input.txt --stream --speed 0.8
+    kokoro-tts --merge-chunks --split-output ./chunks/ --format wav
     kokoro-tts --help-voices
     kokoro-tts --help-languages
     """)
@@ -387,6 +389,115 @@ def handle_ctrl_c(signum, frame):
 # Register the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_ctrl_c)
 
+def merge_chunks_to_chapters(split_output_dir, format="wav"):
+    """Merge audio chunks into complete chapter files."""
+    global stop_spinner
+
+    if not os.path.exists(split_output_dir):
+        print(f"Error: Directory {split_output_dir} does not exist.")
+        return
+
+    # Find all chapter directories
+    chapter_dirs = sorted([d for d in os.listdir(split_output_dir) 
+                          if d.startswith("chapter_") and os.path.isdir(os.path.join(split_output_dir, d))])
+    
+    if not chapter_dirs:
+        print(f"No chapter directories found in {split_output_dir}")
+        return
+
+    for chapter_dir in chapter_dirs:
+        chapter_path = os.path.join(split_output_dir, chapter_dir)
+        chunk_files = sorted([f for f in os.listdir(chapter_path) 
+                            if f.startswith("chunk_") and f.endswith(f".{format}")])
+        
+        if not chunk_files:
+            print(f"No chunks found in {chapter_dir}")
+            continue
+
+        # Read chapter title from info.txt if available
+        chapter_title = chapter_dir
+        info_file = os.path.join(chapter_path, "info.txt")
+        if os.path.exists(info_file):
+            with open(info_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith("Title:"):
+                        chapter_title = line.replace("Title:", "").strip()
+                        break
+
+        print(f"\nMerging chunks for {chapter_title}")
+        
+        # Initialize variables for merging
+        all_samples = []
+        sample_rate = None
+        total_duration = 0
+        
+        # Create progress spinner
+        total_chunks = len(chunk_files)
+        processed_chunks = 0
+        
+        for chunk_file in chunk_files:
+            chunk_path = os.path.join(chapter_path, chunk_file)
+            
+            # Display progress
+            print(f"\rProcessing chunk {processed_chunks + 1}/{total_chunks}", end="")
+            
+            try:
+                # Read audio data
+                data, sr = sf.read(chunk_path)
+                
+                # Verify the audio data
+                if len(data) == 0:
+                    print(f"\nWarning: Empty audio data in {chunk_file}")
+                    continue
+                
+                # Initialize sample rate or verify it matches
+                if sample_rate is None:
+                    sample_rate = sr
+                elif sr != sample_rate:
+                    print(f"\nWarning: Sample rate mismatch in {chunk_file}")
+                    continue
+                
+                # Add chunk duration to total
+                chunk_duration = len(data) / sr
+                total_duration += chunk_duration
+                
+                # Append the audio data
+                all_samples.extend(data)
+                processed_chunks += 1
+                
+            except Exception as e:
+                print(f"\nError processing {chunk_file}: {e}")
+        
+        print()  # New line after progress
+        
+        if all_samples:
+            # Create merged file name
+            merged_file = os.path.join(split_output_dir, f"{chapter_dir}.{format}")
+            print(f"Saving merged chapter to {merged_file}")
+            print(f"Total duration: {total_duration:.2f} seconds")
+            
+            try:
+                # Ensure all_samples is a numpy array
+                import numpy as np
+                all_samples = np.array(all_samples)
+                
+                # Save merged audio
+                sf.write(merged_file, all_samples, sample_rate)
+                print(f"Successfully merged {processed_chunks}/{total_chunks} chunks")
+                
+                # Verify the output file
+                if os.path.exists(merged_file):
+                    output_data, output_sr = sf.read(merged_file)
+                    output_duration = len(output_data) / output_sr
+                    print(f"Verified output file: {output_duration:.2f} seconds")
+                else:
+                    print("Warning: Output file was not created")
+                
+            except Exception as e:
+                print(f"Error saving merged file: {e}")
+        else:
+            print("No valid audio data to merge")
+
 if __name__ == "__main__":
     # Handle help commands first
     if len(sys.argv) == 2:
@@ -400,18 +511,21 @@ if __name__ == "__main__":
             print_supported_voices()
             sys.exit(0)
     
-    if len(sys.argv) < 2:
-        print_usage()
-        sys.exit(1)
-    
-    input_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
+    # Parse arguments
+    input_file = None
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('--'):
+        input_file = sys.argv[1]
+        output_file = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
+    else:
+        output_file = None
+
     stream = '--stream' in sys.argv
     speed = 1.0  # default speed
     lang = "en-us"  # default language
     voice = None  # default to interactive selection
     split_output = None
     format = "wav"  # default format
+    merge_chunks = '--merge-chunks' in sys.argv
     
     # Parse optional arguments
     for i, arg in enumerate(sys.argv):
@@ -433,6 +547,20 @@ if __name__ == "__main__":
                 print("Error: Format must be either 'wav' or 'mp3'")
                 sys.exit(1)
     
+    # Handle merge chunks operation
+    if merge_chunks:
+        if not split_output:
+            print("Error: --split-output directory must be specified when using --merge-chunks")
+            sys.exit(1)
+        merge_chunks_to_chapters(split_output, format)
+        sys.exit(0)
+    
+    # Normal processing mode
+    if not input_file:
+        print("Error: Input file required for text-to-speech conversion")
+        print_usage()
+        sys.exit(1)
+
     # Ensure the input file exists
     if not os.path.isfile(input_file):
         print(f"Error: The file {input_file} does not exist.")

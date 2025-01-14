@@ -80,29 +80,92 @@ def validate_language(lang, kokoro):
         print(f"Error getting supported languages: {e}")
         sys.exit(1)
 
-def convert_text_to_audio(input_file, output_file=None, voice="af_sarah", speed=1.0, lang="en-us", stream=False):
+def print_usage():
+    print("""
+Usage: python main.py <input_text_file> [<output_audio_file>] [options]
+
+Options:
+    --stream        Stream audio instead of saving to file
+    --speed <float> Set speech speed (default: 1.0)
+    --lang <str>    Set language (default: en-us)
+    --voice <str>   Set voice (default: interactive selection)
+
+Note: 
+    - Supported languages depend on the model version.
+      Run with --help-languages to see available languages.
+    - Run with --help-voices to see available voices.
+
+Example:
+    python main.py input.txt output.wav --speed 1.2 --lang en-us --voice af_sarah
+    python main.py input.epub --stream
+    """)
+
+def print_supported_languages():
+    """Print all supported languages from Kokoro."""
+    try:
+        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+        languages = sorted(kokoro.get_languages())
+        print("\nSupported languages:")
+        for lang in languages:
+            print(f"    {lang}")
+        print()
+    except Exception as e:
+        print(f"Error loading model to get supported languages: {e}")
+        sys.exit(1)
+
+def print_supported_voices():
+    """Print all supported voices from Kokoro."""
+    try:
+        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+        voices = sorted(kokoro.get_voices())
+        print("\nSupported voices:")
+        for idx, voice in enumerate(voices):
+            print(f"    {idx + 1}. {voice}")
+        print()
+    except Exception as e:
+        print(f"Error loading model to get supported voices: {e}")
+        sys.exit(1)
+
+def validate_voice(voice, kokoro):
+    """Validate if the voice is supported."""
+    try:
+        supported_voices = set(kokoro.get_voices())
+        if voice not in supported_voices:
+            supported_voices = ', '.join(sorted(supported_voices))
+            raise ValueError(f"Unsupported voice: {voice}\nSupported voices are: {supported_voices}")
+        return voice
+    except Exception as e:
+        print(f"Error getting supported voices: {e}")
+        sys.exit(1)
+
+def convert_text_to_audio(input_file, output_file=None, voice=None, speed=1.0, lang="en-us", stream=False):
     global stop_spinner
     # Load Kokoro model
     try:
         kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
         # Validate language after loading model
         lang = validate_language(lang, kokoro)
+        
+        # Handle voice selection
+        if voice:
+            voice = validate_voice(voice, kokoro)
+        else:
+            # Interactive voice selection
+            voices = list_available_voices(kokoro)
+            try:
+                voice_choice = int(input("Choose a voice by number: ")) - 1
+                if voice_choice < 0 or voice_choice >= len(voices):
+                    raise ValueError("Invalid choice")
+                voice = voices[voice_choice]
+            except (ValueError, IndexError):
+                print("Invalid choice. Using default voice.")
+                voice = "af_sarah"  # default voice
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"Error loading Kokoro model: {e}")
         sys.exit(1)
-    
-    # List available voices and choose one
-    voices = list_available_voices(kokoro)
-    try:
-        voice_choice = int(input("Choose a voice by number: ")) - 1
-        if voice_choice < 0 or voice_choice >= len(voices):
-            raise ValueError("Invalid choice")
-        voice = voices[voice_choice]
-    except (ValueError, IndexError):
-        print("Invalid choice. Using default voice.")
     
     # Read the input file (handle .txt or .epub)
     if input_file.endswith('.epub'):
@@ -167,36 +230,6 @@ def handle_ctrl_c(signum, frame):
 # Register the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_ctrl_c)
 
-def print_usage():
-    print("""
-Usage: python main.py <input_text_file> [<output_audio_file>] [options]
-
-Options:
-    --stream        Stream audio instead of saving to file
-    --speed <float> Set speech speed (default: 1.0)
-    --lang <str>    Set language (default: en-us)
-
-Note: Supported languages depend on the model version.
-      Run with --help-languages to see available languages.
-
-Example:
-    python main.py input.txt output.wav --speed 1.2 --lang en-us
-    python main.py input.epub --stream
-    """)
-
-def print_supported_languages():
-    """Print all supported languages from Kokoro."""
-    try:
-        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
-        languages = sorted(kokoro.get_languages())
-        print("\nSupported languages:")
-        for lang in languages:
-            print(f"    {lang}")
-        print()
-    except Exception as e:
-        print(f"Error loading model to get supported languages: {e}")
-        sys.exit(1)
-
 if __name__ == "__main__":
     # Handle help commands first
     if len(sys.argv) == 2:
@@ -205,6 +238,9 @@ if __name__ == "__main__":
             sys.exit(0)
         elif sys.argv[1] == '--help-languages':
             print_supported_languages()
+            sys.exit(0)
+        elif sys.argv[1] == '--help-voices':
+            print_supported_voices()
             sys.exit(0)
     
     if len(sys.argv) < 2:
@@ -216,6 +252,7 @@ if __name__ == "__main__":
     stream = '--stream' in sys.argv
     speed = 1.0  # default speed
     lang = "en-us"  # default language
+    voice = None  # default to interactive selection
     
     # Parse optional arguments
     for i, arg in enumerate(sys.argv):
@@ -227,6 +264,8 @@ if __name__ == "__main__":
                 sys.exit(1)
         elif arg == '--lang' and i + 1 < len(sys.argv):
             lang = sys.argv[i + 1]
+        elif arg == '--voice' and i + 1 < len(sys.argv):
+            voice = sys.argv[i + 1]
     
     # Ensure the input file exists
     if not os.path.isfile(input_file):
@@ -239,5 +278,5 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # Convert text to audio or stream
-    convert_text_to_audio(input_file, output_file, stream=stream, speed=speed, lang=lang)
+    convert_text_to_audio(input_file, output_file, voice=voice, stream=stream, speed=speed, lang=lang)
 

@@ -21,7 +21,8 @@ stop_spinner = False
 stop_audio = False
 
 def spinning_wheel(message="Processing...", progress=None):
-    spinner = itertools.cycle(['|', '/', '-', '\\'])
+    """Display a spinning wheel with a message."""
+    spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
     while not stop_spinner:
         if progress is not None:
             sys.stdout.write(f'\r{message} {progress}% {next(spinner)}')
@@ -29,7 +30,8 @@ def spinning_wheel(message="Processing...", progress=None):
             sys.stdout.write(f'\r{message} {next(spinner)}')
         sys.stdout.flush()
         time.sleep(0.1)
-    sys.stdout.write('\r')
+    # Clear the spinner line when done
+    sys.stdout.write('\r' + ' ' * (len(message) + 10) + '\r')
     sys.stdout.flush()
 
 def list_available_voices(kokoro):
@@ -176,40 +178,71 @@ def convert_text_to_audio(input_file, output_file=None, voice=None, speed=1.0, l
         with open(input_file, 'r', encoding='utf-8') as file:
             text = file.read()
 
-    # Handle spinner when creating non-stream audio
-    if not stream and output_file:
-        stop_spinner = False
-        spinner_thread = threading.Thread(target=spinning_wheel, args=("Creating audio file...",))
-        spinner_thread.start()
-
     if stream or not output_file:
         import asyncio
         asyncio.run(stream_audio(kokoro, text, voice, speed, lang))
     else:
-        samples, sample_rate = kokoro.create(
-            text, voice=voice, speed=speed, lang=lang
-        )
-        # Save the generated audio to the specified output file
-        sf.write(output_file, samples, sample_rate)
-        print(f"Created {output_file}")
-    
-    # Stop spinner after the process completes
-    stop_spinner = True
-    if not stream and output_file:
-        spinner_thread.join()
+        # Split into chunks for better progress reporting
+        chunks = chunk_text(text)
+        all_samples = []
+        sample_rate = None
+        
+        for i, chunk in enumerate(chunks, 1):
+            if stop_audio:
+                break
+            # Start spinner with chunk progress
+            stop_spinner = False
+            spinner_thread = threading.Thread(
+                target=spinning_wheel,
+                args=(f"Processing chunk {i}/{len(chunks)}",)
+            )
+            spinner_thread.start()
+            
+            # Process chunk
+            chunk_samples, sample_rate = kokoro.create(
+                chunk, voice=voice, speed=speed, lang=lang
+            )
+            all_samples.extend(chunk_samples)
+            
+            # Stop spinner for this chunk
+            stop_spinner = True
+            spinner_thread.join()
+        
+        if all_samples:
+            # Show final saving message
+            stop_spinner = False
+            spinner_thread = threading.Thread(
+                target=spinning_wheel,
+                args=("Saving audio file...",)
+            )
+            spinner_thread.start()
+            
+            # Save the complete audio file
+            sf.write(output_file, all_samples, sample_rate)
+            
+            stop_spinner = True
+            spinner_thread.join()
+            print(f"\nCreated {output_file}")
 
 async def stream_audio(kokoro, text, voice, speed, lang):
     global stop_spinner, stop_audio
     stop_spinner = False
     stop_audio = False
-    spinner_thread = threading.Thread(target=spinning_wheel)
-    spinner_thread.start()
-
-    print("Streaming audio...")
+    
+    print("Starting audio stream...")
     chunks = chunk_text(text)
-    for chunk in chunks:
+    
+    for i, chunk in enumerate(chunks, 1):
         if stop_audio:
             break
+        # Update progress percentage
+        progress = int((i / len(chunks)) * 100)
+        spinner_thread = threading.Thread(
+            target=spinning_wheel, 
+            args=(f"Streaming chunk {i}/{len(chunks)}",)
+        )
+        spinner_thread.start()
+        
         async for samples, sample_rate in kokoro.create_stream(
             chunk, voice=voice, speed=speed, lang=lang
         ):
@@ -217,10 +250,12 @@ async def stream_audio(kokoro, text, voice, speed, lang):
                 break
             sd.play(samples, sample_rate)
             sd.wait()
-
-    stop_spinner = True
-    spinner_thread.join()
-    print("Streaming completed.")
+        
+        stop_spinner = True
+        spinner_thread.join()
+        stop_spinner = False
+    
+    print("\nStreaming completed.")
 
 def handle_ctrl_c(signum, frame):
     global stop_spinner, stop_audio

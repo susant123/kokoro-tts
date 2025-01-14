@@ -68,11 +68,28 @@ def chunk_text(text, chunk_size=1000):
     
     return chunks
 
+def validate_language(lang, kokoro):
+    """Validate if the language is supported."""
+    try:
+        supported_languages = set(kokoro.get_languages())  # Get supported languages from Kokoro
+        if lang not in supported_languages:
+            supported_langs = ', '.join(sorted(supported_languages))
+            raise ValueError(f"Unsupported language: {lang}\nSupported languages are: {supported_langs}")
+        return lang
+    except Exception as e:
+        print(f"Error getting supported languages: {e}")
+        sys.exit(1)
+
 def convert_text_to_audio(input_file, output_file=None, voice="af_sarah", speed=1.0, lang="en-us", stream=False):
     global stop_spinner
     # Load Kokoro model
     try:
         kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+        # Validate language after loading model
+        lang = validate_language(lang, kokoro)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"Error loading Kokoro model: {e}")
         sys.exit(1)
@@ -159,13 +176,38 @@ Options:
     --speed <float> Set speech speed (default: 1.0)
     --lang <str>    Set language (default: en-us)
 
+Note: Supported languages depend on the model version.
+      Run with --help-languages to see available languages.
+
 Example:
     python main.py input.txt output.wav --speed 1.2 --lang en-us
     python main.py input.epub --stream
     """)
 
+def print_supported_languages():
+    """Print all supported languages from Kokoro."""
+    try:
+        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+        languages = sorted(kokoro.get_languages())
+        print("\nSupported languages:")
+        for lang in languages:
+            print(f"    {lang}")
+        print()
+    except Exception as e:
+        print(f"Error loading model to get supported languages: {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or sys.argv[1] in ['-h', '--help']:
+    # Handle help commands first
+    if len(sys.argv) == 2:
+        if sys.argv[1] in ['-h', '--help']:
+            print_usage()
+            sys.exit(0)
+        elif sys.argv[1] == '--help-languages':
+            print_supported_languages()
+            sys.exit(0)
+    
+    if len(sys.argv) < 2:
         print_usage()
         sys.exit(1)
     

@@ -18,10 +18,13 @@ warnings.filterwarnings("ignore", category=FutureWarning, module='ebooklib')
 stop_spinner = False
 stop_audio = False
 
-def spinning_wheel(message="Processing..."):
+def spinning_wheel(message="Processing...", progress=None):
     spinner = itertools.cycle(['|', '/', '-', '\\'])
     while not stop_spinner:
-        sys.stdout.write(f'\r{message} {next(spinner)}')
+        if progress is not None:
+            sys.stdout.write(f'\r{message} {progress}% {next(spinner)}')
+        else:
+            sys.stdout.write(f'\r{message} {next(spinner)}')
         sys.stdout.flush()
         time.sleep(0.1)
     sys.stdout.write('\r')
@@ -44,11 +47,35 @@ def extract_text_from_epub(epub_file):
             full_text += soup.get_text()
     return full_text
 
+def chunk_text(text, chunk_size=1000):
+    """Split text into chunks at sentence boundaries."""
+    words = text.split()
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for word in words:
+        current_chunk.append(word)
+        current_size += len(word) + 1  # +1 for space
+        
+        if current_size >= chunk_size and word[-1] in '.!?':
+            chunks.append(' '.join(current_chunk))
+            current_chunk = []
+            current_size = 0
+    
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    
+    return chunks
 
 def convert_text_to_audio(input_file, output_file=None, voice="af_sarah", speed=1.0, lang="en-us", stream=False):
     global stop_spinner
     # Load Kokoro model
-    kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+    try:
+        kokoro = Kokoro("kokoro-v0_19.onnx", "voices.json")
+    except Exception as e:
+        print(f"Error loading Kokoro model: {e}")
+        sys.exit(1)
     
     # List available voices and choose one
     voices = list_available_voices(kokoro)
@@ -97,13 +124,17 @@ async def stream_audio(kokoro, text, voice, speed, lang):
     spinner_thread.start()
 
     print("Streaming audio...")
-    async for samples, sample_rate in kokoro.create_stream(
-        text, voice=voice, speed=speed, lang=lang
-    ):
+    chunks = chunk_text(text)
+    for chunk in chunks:
         if stop_audio:
             break
-        sd.play(samples, sample_rate)
-        sd.wait()
+        async for samples, sample_rate in kokoro.create_stream(
+            chunk, voice=voice, speed=speed, lang=lang
+        ):
+            if stop_audio:
+                break
+            sd.play(samples, sample_rate)
+            sd.wait()
 
     stop_spinner = True
     spinner_thread.join()
@@ -119,15 +150,41 @@ def handle_ctrl_c(signum, frame):
 # Register the signal handler for SIGINT (Ctrl+C)
 signal.signal(signal.SIGINT, handle_ctrl_c)
 
+def print_usage():
+    print("""
+Usage: python main.py <input_text_file> [<output_audio_file>] [options]
+
+Options:
+    --stream        Stream audio instead of saving to file
+    --speed <float> Set speech speed (default: 1.0)
+    --lang <str>    Set language (default: en-us)
+
+Example:
+    python main.py input.txt output.wav --speed 1.2 --lang en-us
+    python main.py input.epub --stream
+    """)
+
 if __name__ == "__main__":
-    # Check if the correct number of arguments are provided
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <input_text_file> [<output_audio_file>] [--stream]")
+    if len(sys.argv) < 2 or sys.argv[1] in ['-h', '--help']:
+        print_usage()
         sys.exit(1)
     
     input_file = sys.argv[1]
     output_file = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith('--') else None
     stream = '--stream' in sys.argv
+    speed = 1.0  # default speed
+    lang = "en-us"  # default language
+    
+    # Parse optional arguments
+    for i, arg in enumerate(sys.argv):
+        if arg == '--speed' and i + 1 < len(sys.argv):
+            try:
+                speed = float(sys.argv[i + 1])
+            except ValueError:
+                print("Error: Speed must be a number")
+                sys.exit(1)
+        elif arg == '--lang' and i + 1 < len(sys.argv):
+            lang = sys.argv[i + 1]
     
     # Ensure the input file exists
     if not os.path.isfile(input_file):
@@ -140,5 +197,5 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # Convert text to audio or stream
-    convert_text_to_audio(input_file, output_file, stream=stream)
+    convert_text_to_audio(input_file, output_file, stream=stream, speed=speed, lang=lang)
 

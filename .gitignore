@@ -7,7 +7,9 @@ wheels/
 *.egg-info
 test.txt
 test.epub
-test.mp3
-test.wav
 # Virtual environments
 .venv
+# Generated audio files
+*.wav
+*.mp3
+book_audio/

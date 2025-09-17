@@ -72,6 +72,111 @@
             align-self: flex-start;
         }
         
+        /* AI Response Formatting Styles */
+        .ai-content {
+            line-height: 1.6;
+        }
+        
+        .ai-content h1, .ai-content h2, .ai-content h3, 
+        .ai-content h4, .ai-content h5, .ai-content h6 {
+            margin-top: 16px;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .ai-content h1 { font-size: 1.5em; border-bottom: 2px solid #3498db; padding-bottom: 4px; }
+        .ai-content h2 { font-size: 1.3em; color: #2980b9; }
+        .ai-content h3 { font-size: 1.2em; color: #34495e; }
+        
+        .ai-content p {
+            margin-bottom: 12px;
+        }
+        
+        .ai-content ul, .ai-content ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .ai-content li {
+            margin-bottom: 4px;
+        }
+        
+        .ai-content blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 12px;
+            margin: 12px 0;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .ai-content code {
+            background: #f1f2f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e74c3c;
+        }
+        
+        .ai-content pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        
+        .ai-content pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+        
+        .ai-content strong, .ai-content b {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .ai-content em, .ai-content i {
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        
+        .ai-content a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        .ai-content a:hover {
+            text-decoration: underline;
+        }
+        
+        .ai-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        
+        .ai-content th, .ai-content td {
+            border: 1px solid #bdc3c7;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .ai-content th {
+            background: #ecf0f1;
+            font-weight: bold;
+        }
+        
+        .ai-content hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(to right, #3498db, transparent);
+            margin: 20px 0;
+        }
+        
         .message-audio {
             margin-top: 8px;
         }
@@ -598,7 +703,8 @@ Examples:
                 if (role === 'user') {
                     html = `<strong>👤 You:</strong> ${this.escapeHtml(content)}`;
                 } else if (role === 'assistant') {
-                    html = `<strong>🤖 AI:</strong> ${this.escapeHtml(content)}`;
+                    const formattedContent = this.formatAiResponse(content);
+                    html = `<strong>🤖 AI:</strong><div class="ai-content">${formattedContent}</div>`;
                 } else {
                     html = content;
                 }
@@ -1368,6 +1474,102 @@ Examples:
                 if (this.speechEvents.length > 50) {
                     this.speechEvents = this.speechEvents.slice(-30);
                 }
+            }
+            
+            // Format AI response content with basic markdown-like formatting
+            formatAiResponse(text) {
+                // First escape HTML to prevent XSS
+                let formatted = this.escapeHtml(text);
+                
+                // Apply formatting patterns in order
+                
+                // Headers (must be at start of line)
+                formatted = formatted.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+                formatted = formatted.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+                formatted = formatted.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+                
+                // Code blocks first (to avoid interfering with other patterns)
+                formatted = formatted.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+                
+                // Inline code
+                formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+                
+                // Bold and italic
+                formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                
+                // Blockquotes
+                formatted = formatted.replace(/^> (.+$)/gm, '<blockquote>$1</blockquote>');
+                
+                // Lists - handle separately to avoid conflicts
+                let lines = formatted.split('\n');
+                let inOrderedList = false;
+                let inUnorderedList = false;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    
+                    // Check for numbered list items
+                    if (/^\d+\.\s+/.test(line)) {
+                        if (!inOrderedList) {
+                            lines[i] = '<ol><li>' + line.replace(/^\d+\.\s+/, '') + '</li>';
+                            inOrderedList = true;
+                        } else {
+                            lines[i] = '<li>' + line.replace(/^\d+\.\s+/, '') + '</li>';
+                        }
+                        inUnorderedList = false;
+                    }
+                    // Check for bullet list items
+                    else if (/^[-*+]\s+/.test(line)) {
+                        if (!inUnorderedList) {
+                            lines[i] = '<ul><li>' + line.replace(/^[-*+]\s+/, '') + '</li>';
+                            inUnorderedList = true;
+                        } else {
+                            lines[i] = '<li>' + line.replace(/^[-*+]\s+/, '') + '</li>';
+                        }
+                        inOrderedList = false;
+                    }
+                    // Not a list item
+                    else {
+                        if (inOrderedList) {
+                            lines[i-1] = lines[i-1] + '</ol>';
+                            inOrderedList = false;
+                        }
+                        if (inUnorderedList) {
+                            lines[i-1] = lines[i-1] + '</ul>';
+                            inUnorderedList = false;
+                        }
+                    }
+                }
+                
+                // Close any remaining open lists
+                if (inOrderedList) {
+                    lines[lines.length-1] += '</ol>';
+                }
+                if (inUnorderedList) {
+                    lines[lines.length-1] += '</ul>';
+                }
+                
+                formatted = lines.join('\n');
+                
+                // Handle line breaks and paragraphs
+                formatted = formatted.replace(/\n\n+/g, '</p><p>');
+                formatted = formatted.replace(/\n/g, '<br>');
+                
+                // Wrap in paragraphs (but avoid wrapping block elements)
+                if (!formatted.startsWith('<')) {
+                    formatted = '<p>' + formatted + '</p>';
+                } else {
+                    // Add paragraph wrapping while preserving block elements
+                    formatted = formatted.replace(/^([^<][^]*?)(<(?:h[1-6]|ul|ol|blockquote|pre)>)/gm, '<p>$1</p>$2');
+                    formatted = formatted.replace(/(<\/(?:h[1-6]|ul|ol|blockquote|pre)>)([^<][^]*?)$/gm, '$1<p>$2</p>');
+                }
+                
+                // Clean up empty paragraphs
+                formatted = formatted.replace(/<p><\/p>/g, '');
+                formatted = formatted.replace(/<p>\s*<\/p>/g, '');
+                
+                return formatted;
             }
             
             escapeHtml(text) {

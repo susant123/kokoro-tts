@@ -140,16 +140,53 @@ class ConversationalAI:
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
     
+    def clean_text_for_tts(self, text: str) -> str:
+        """Clean text by removing markdown formatting characters for TTS"""
+        import re
+        
+        # Remove code blocks (triple backticks)
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        
+        # Remove inline code (single backticks)
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        
+        # Remove headers (# ## ###)
+        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+        
+        # Remove bold formatting (**text**)
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+        
+        # Remove italic formatting (*text*)
+        text = re.sub(r'\*(.*?)\*', r'\1', text)
+        
+        # Remove blockquote markers (>)
+        text = re.sub(r'^>\s*', '', text, flags=re.MULTILINE)
+        
+        # Clean up bullet points and numbered lists
+        text = re.sub(r'^[-*+]\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\d+\.\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove extra whitespace and line breaks
+        text = re.sub(r'\n+', ' ', text)  # Replace multiple newlines with single space
+        text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+        text = text.strip()
+        
+        return text
+    
     def generate_tts_audio(self, text: str, voice: str = None) -> Optional[str]:
         """Generate TTS audio for given text"""
         if voice is None:
             voice = self.tts_voice
             
+        # Clean the text for TTS (remove markdown formatting)
+        clean_text = self.clean_text_for_tts(text)
+        print(f"🎤 TTS Text (cleaned): {clean_text[:100]}{'...' if len(clean_text) > 100 else ''}")
+            
         try:
             # First try direct API
             try:
-                # Generate audio using direct API
-                audio_data = self.kokoro.create(text, voice=voice, speed=self.tts_speed, lang="en-us")
+                # Generate audio using direct API with cleaned text
+                audio_data = self.kokoro.create(clean_text, voice=voice, speed=self.tts_speed, lang="en-us")
                 
                 # Debug: Print original data info
                 print(f"🔧 Direct API: Generated audio data type: {type(audio_data)}, shape: {getattr(audio_data, 'shape', 'no shape')}")
@@ -273,6 +310,10 @@ class ConversationalAI:
         if voice is None:
             voice = self.tts_voice
             
+        # Clean the text for TTS (remove markdown formatting)
+        clean_text = self.clean_text_for_tts(text)
+        print(f"🎤 TTS CLI Text (cleaned): {clean_text[:100]}{'...' if len(clean_text) > 100 else ''}")
+            
         try:
             import subprocess
             import tempfile
@@ -283,9 +324,9 @@ class ConversationalAI:
             audio_filename = f"tts_{self.conversation_id}_{timestamp}.wav"
             audio_filepath = os.path.join(self.temp_dir, audio_filename)
             
-            # Write text to temporary file with UTF-8 encoding
+            # Write cleaned text to temporary file with UTF-8 encoding
             with open(temp_text_file, 'w', encoding='utf-8') as f:
-                f.write(text)
+                f.write(clean_text)
             
             # Get Python executable path
             python_exe = os.path.join(os.getcwd(), ".venv", "Scripts", "python.exe")

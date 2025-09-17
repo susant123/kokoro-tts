@@ -29,6 +29,29 @@ warnings.filterwarnings("ignore", category=FutureWarning, module='ebooklib')
 stop_spinner = False
 stop_audio = False
 
+def check_required_files(model_path="kokoro-v1.0.onnx", voices_path="voices-v1.0.bin"):
+    """Check if required model files exist and provide helpful error messages."""
+    required_files = {
+        model_path: "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/kokoro-v1.0.onnx",
+        voices_path: "https://github.com/nazdridoy/kokoro-tts/releases/download/v1.0.0/voices-v1.0.bin"
+    }
+    
+    missing_files = []
+    for filepath, download_url in required_files.items():
+        if not os.path.exists(filepath):
+            missing_files.append((filepath, download_url))
+    
+    if missing_files:
+        print("Error: Required model files are missing:")
+        for filepath, download_url in missing_files:
+            print(f"  • {filepath}")
+        print("\nYou can download the missing files using these commands:")
+        for filepath, download_url in missing_files:
+            print(f"  wget {download_url}")
+        print(f"\nPlace the downloaded files in the same directory where you run the `kokoro-tts` command.")
+        print(f"Or specify custom paths using --model and --voices options.")
+        sys.exit(1)
+
 def spinning_wheel(message="Processing...", progress=None):
     """Display a spinning wheel with a message."""
     spinner = itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
@@ -140,6 +163,8 @@ Options:
     --split-output <dir> Save each chunk as separate file in directory
     --format <str>      Audio format: wav or mp3 (default: wav)
     --debug             Show detailed debug information
+    --model <path>      Path to kokoro-v1.0.onnx model file (default: ./kokoro-v1.0.onnx)
+    --voices <path>     Path to voices-v1.0.bin file (default: ./voices-v1.0.bin)
 
 Input formats:
     .txt               Text file input
@@ -158,12 +183,15 @@ Examples:
     kokoro-tts --help-voices
     kokoro-tts --help-languages
     kokoro-tts input.epub --split-output ./chunks/ --debug
+    kokoro-tts input.txt output.wav --model /path/to/model.onnx --voices /path/to/voices.bin
+    kokoro-tts input.txt --model ./models/kokoro-v1.0.onnx --voices ./models/voices-v1.0.bin
     """)
 
-def print_supported_languages():
+def print_supported_languages(model_path="kokoro-v1.0.onnx", voices_path="voices-v1.0.bin"):
     """Print all supported languages from Kokoro."""
+    check_required_files(model_path, voices_path)
     try:
-        kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+        kokoro = Kokoro(model_path, voices_path)
         languages = sorted(kokoro.get_languages())
         print("\nSupported languages:")
         for lang in languages:
@@ -173,10 +201,11 @@ def print_supported_languages():
         print(f"Error loading model to get supported languages: {e}")
         sys.exit(1)
 
-def print_supported_voices():
+def print_supported_voices(model_path="kokoro-v1.0.onnx", voices_path="voices-v1.0.bin"):
     """Print all supported voices from Kokoro."""
+    check_required_files(model_path, voices_path)
     try:
-        kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+        kokoro = Kokoro(model_path, voices_path)
         voices = sorted(kokoro.get_voices())
         print("\nSupported voices:")
         for idx, voice in enumerate(voices):
@@ -779,11 +808,20 @@ def process_chunk_sequential(chunk: str, kokoro: Kokoro, voice: str, speed: floa
         return None, None
 
 def convert_text_to_audio(input_file, output_file=None, voice=None, speed=1.0, lang="en-us", 
-                         stream=False, split_output=None, format="wav", debug=False):
+                         stream=False, split_output=None, format="wav", debug=False, stdin_indicators=None,
+                         model_path="kokoro-v1.0.onnx", voices_path="voices-v1.0.bin"):
     global stop_spinner
+    
+    # Define stdin indicators if not provided
+    if stdin_indicators is None:
+        stdin_indicators = ['/dev/stdin', '-', 'CONIN$']  # CONIN$ is Windows stdin
+    
+    # Check for required files first
+    check_required_files(model_path, voices_path)
+    
     # Load Kokoro model
     try:
-        kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+        kokoro = Kokoro(model_path, voices_path)
 
         # Validate language after loading model
         lang = validate_language(lang, kokoro)
@@ -792,48 +830,53 @@ def convert_text_to_audio(input_file, output_file=None, voice=None, speed=1.0, l
         if voice:
             voice = validate_voice(voice, kokoro)
         else:
-            # Interactive voice selection
-            voices = list_available_voices(kokoro)
-            print("\nHow to choose a voice:")
-            print("You can use either a single voice or blend two voices together.")
-            print("\nFor a single voice:")
-            print("  • Just enter one number (example: '7')")
-            print("\nFor blending two voices:")
-            print("  • Enter two numbers separated by comma")
-            print("  • Optionally add weights after each number using ':weight'")
-            print("\nExamples:")
-            print("  • '7'      - Use voice #7 only")
-            print("  • '7,11'   - Mix voices #7 and #11 equally (50% each)")
-            print("  • '7:60,11:40' - Mix 60% of voice #7 with 40% of voice #11")
-            try:
-                voice_input = input("Choose voice(s) by number: ")
-                if ',' in voice_input:
-                    # Handle blended voices
-                    pairs = []
-                    for pair in voice_input.split(','):
-                        if ':' in pair:
-                            num, weight = pair.strip().split(':')
-                            voice_idx = int(num.strip()) - 1
-                            if not (0 <= voice_idx < len(voices)):
-                                raise ValueError(f"Invalid voice number: {int(num)}")
-                            pairs.append(f"{voices[voice_idx]}:{weight}")
-                        else:
-                            voice_idx = int(pair.strip()) - 1
-                            if not (0 <= voice_idx < len(voices)):
-                                raise ValueError(f"Invalid voice number: {int(pair)}")
-                            pairs.append(voices[voice_idx])
-                    voice = ','.join(pairs)
-                else:
-                    # Single voice
-                    voice_choice = int(voice_input) - 1
-                    if not (0 <= voice_choice < len(voices)):
-                        raise ValueError("Invalid choice")
-                    voice = voices[voice_choice]
-                # Validate and potentially convert to blend
-                voice = validate_voice(voice, kokoro)
-            except (ValueError, IndexError):
-                print("Invalid choice. Using default voice.")
+            # Check if we're using stdin (can't do interactive input)
+            if input_file in stdin_indicators:
+                print("Using stdin - automatically selecting default voice (af_sarah)")
                 voice = "af_sarah"  # default voice
+            else:
+                # Interactive voice selection
+                voices = list_available_voices(kokoro)
+                print("\nHow to choose a voice:")
+                print("You can use either a single voice or blend two voices together.")
+                print("\nFor a single voice:")
+                print("  • Just enter one number (example: '7')")
+                print("\nFor blending two voices:")
+                print("  • Enter two numbers separated by comma")
+                print("  • Optionally add weights after each number using ':weight'")
+                print("\nExamples:")
+                print("  • '7'      - Use voice #7 only")
+                print("  • '7,11'   - Mix voices #7 and #11 equally (50% each)")
+                print("  • '7:60,11:40' - Mix 60% of voice #7 with 40% of voice #11")
+                try:
+                    voice_input = input("Choose voice(s) by number: ")
+                    if ',' in voice_input:
+                        # Handle blended voices
+                        pairs = []
+                        for pair in voice_input.split(','):
+                            if ':' in pair:
+                                num, weight = pair.strip().split(':')
+                                voice_idx = int(num.strip()) - 1
+                                if not (0 <= voice_idx < len(voices)):
+                                    raise ValueError(f"Invalid voice number: {int(num)}")
+                                pairs.append(f"{voices[voice_idx]}:{weight}")
+                            else:
+                                voice_idx = int(pair.strip()) - 1
+                                if not (0 <= voice_idx < len(voices)):
+                                    raise ValueError(f"Invalid voice number: {int(pair)}")
+                                pairs.append(voices[voice_idx])
+                        voice = ','.join(pairs)
+                    else:
+                        # Single voice
+                        voice_choice = int(voice_input) - 1
+                        if not (0 <= voice_choice < len(voices)):
+                            raise ValueError("Invalid choice")
+                        voice = voices[voice_choice]
+                    # Validate and potentially convert to blend
+                    voice = validate_voice(voice, kokoro)
+                except (ValueError, IndexError):
+                    print("Invalid choice. Using default voice.")
+                    voice = "af_sarah"  # default voice
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -875,8 +918,12 @@ def convert_text_to_audio(input_file, output_file=None, voice=None, speed=1.0, l
         parser = PdfParser(input_file, debug=debug)
         chapters = parser.get_chapters()
     else:
-        with open(input_file, 'r', encoding='utf-8') as file:
-            text = file.read()
+        # Handle stdin specially (cross-platform)
+        if input_file in stdin_indicators:
+            text = sys.stdin.read()
+        else:
+            with open(input_file, 'r', encoding='utf-8') as file:
+                text = file.read()
         # Treat single text file as one chapter
         chapters = [{'title': 'Chapter 1', 'content': text}]
 
@@ -1191,25 +1238,32 @@ def get_valid_options():
         '--voice',
         '--split-output',
         '--format',
-        '--debug'  # Add debug option
+        '--debug',
+        '--model',
+        '--voices'
     }
 
-if __name__ == "__main__":
-    # Validate command line options first
+
+
+
+def main():
+    """Main entry point for the kokoro-tts CLI tool."""
+    # Define stdin indicators once (cross-platform)
+    stdin_indicators = ['/dev/stdin', '-', 'CONIN$']  # CONIN$ is Windows stdin
+    
+    # Validate command line arguments
     valid_options = get_valid_options()
-    unknown_options = []
     
     # Check for unknown options
-    i = 1
+    unknown_options = []
+    i = 0
     while i < len(sys.argv):
         arg = sys.argv[i]
-        if arg.startswith('--') or arg.startswith('-'):
-            # Check if it's a valid option
-            if arg not in valid_options:
-                unknown_options.append(arg)
+        if arg.startswith('--') and arg not in valid_options:
+            unknown_options.append(arg)
             # Skip the next argument if it's a value for an option that takes parameters
-            elif arg in {'--speed', '--lang', '--voice', '--split-output', '--format'}:
-                i += 1
+        elif arg in {'--speed', '--lang', '--voice', '--split-output', '--format', '--model', '--voices'}:
+            i += 1
         i += 1
     
     # If unknown options were found, show error and help
@@ -1225,17 +1279,38 @@ if __name__ == "__main__":
         print_usage()  # Show the full help text
         sys.exit(1)
     
-    # Handle help commands first
-    if len(sys.argv) == 2:
-        if sys.argv[1] in ['-h', '--help']:
-            print_usage()
-            sys.exit(0)
-        elif sys.argv[1] == '--help-languages':
-            print_supported_languages()
-            sys.exit(0)
-        elif sys.argv[1] == '--help-voices':
-            print_supported_voices()
-            sys.exit(0)
+    # Handle help commands first (before argument parsing)
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print_usage()
+        sys.exit(0)
+    elif '--help-languages' in sys.argv:
+        # For help commands, we need to parse model/voices paths first
+        model_path = "kokoro-v1.0.onnx"  # default model path
+        voices_path = "voices-v1.0.bin"  # default voices path
+        
+        # Parse model/voices paths for help commands
+        for i, arg in enumerate(sys.argv):
+            if arg == '--model' and i + 1 < len(sys.argv):
+                model_path = sys.argv[i + 1]
+            elif arg == '--voices' and i + 1 < len(sys.argv):
+                voices_path = sys.argv[i + 1]
+        
+        print_supported_languages(model_path, voices_path)
+        sys.exit(0)
+    elif '--help-voices' in sys.argv:
+        # For help commands, we need to parse model/voices paths first
+        model_path = "kokoro-v1.0.onnx"  # default model path
+        voices_path = "voices-v1.0.bin"  # default voices path
+        
+        # Parse model/voices paths for help commands
+        for i, arg in enumerate(sys.argv):
+            if arg == '--model' and i + 1 < len(sys.argv):
+                model_path = sys.argv[i + 1]
+            elif arg == '--voices' and i + 1 < len(sys.argv):
+                voices_path = sys.argv[i + 1]
+        
+        print_supported_voices(model_path, voices_path)
+        sys.exit(0)
     
     # Parse arguments
     input_file = None
@@ -1252,6 +1327,8 @@ if __name__ == "__main__":
     split_output = None
     format = "wav"  # default format
     merge_chunks = '--merge-chunks' in sys.argv
+    model_path = "kokoro-v1.0.onnx"  # default model path
+    voices_path = "voices-v1.0.bin"  # default voices path
     
     # Parse optional arguments
     for i, arg in enumerate(sys.argv):
@@ -1272,6 +1349,10 @@ if __name__ == "__main__":
             if format not in ['wav', 'mp3']:
                 print("Error: Format must be either 'wav' or 'mp3'")
                 sys.exit(1)
+        elif arg == '--model' and i + 1 < len(sys.argv):
+            model_path = sys.argv[i + 1]
+        elif arg == '--voices' and i + 1 < len(sys.argv):
+            voices_path = sys.argv[i + 1]
     
     # Handle merge chunks operation
     if merge_chunks:
@@ -1287,8 +1368,8 @@ if __name__ == "__main__":
         print_usage()
         sys.exit(1)
 
-    # Ensure the input file exists
-    if not os.access(input_file, os.R_OK):
+    # Ensure the input file exists (skip check for stdin)
+    if input_file not in stdin_indicators and not os.access(input_file, os.R_OK):
         print(f"Error: Cannot read from {input_file}. File may not exist or you may not have permission to read it.")
         sys.exit(1)
     
@@ -1303,5 +1384,10 @@ if __name__ == "__main__":
     # Convert text to audio with debug flag
     convert_text_to_audio(input_file, output_file, voice=voice, stream=stream, 
                          speed=speed, lang=lang, split_output=split_output, 
-                         format=format, debug=debug)
+                         format=format, debug=debug, stdin_indicators=stdin_indicators,
+                         model_path=model_path, voices_path=voices_path)
+
+
+if __name__ == '__main__':
+    main()
 

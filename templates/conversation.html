@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kokoro TTS - Conversation Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            margin: 2rem auto;
+            max-width: 1200px;
+            padding: 2rem;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .conversation-message {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .conversation-message:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .message-number {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        .remove-message {
+            background: #dc3545;
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .remove-message:hover {
+            background: #c82333;
+            transform: scale(1.1);
+        }
+        
+        .form-control, .form-select {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 10px;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            border: none;
+            border-radius: 10px;
+        }
+        
+        .btn-outline-primary {
+            border: 2px solid #667eea;
+            color: #667eea;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-outline-primary:hover {
+            background: #667eea;
+            transform: translateY(-2px);
+        }
+        
+        .add-message-btn {
+            border: 2px dashed #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            border-radius: 15px;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 2rem;
+        }
+        
+        .add-message-btn:hover {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #5a67d8;
+        }
+        
+        .conversation-controls {
+            background: #e3f2fd;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .audio-result {
+            background: #d4edda;
+            border-radius: 15px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-top: 2rem;
+        }
+        
+        .character-count {
+            font-size: 0.85rem;
+            color: #666;
+            text-align: right;
+            margin-top: 0.25rem;
+        }
+        
+        .voice-indicator {
+            font-size: 0.85rem;
+            color: #495057;
+            margin-top: 0.25rem;
+        }
+
+        .voice-preview {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            display: none;
+        }
+
+        .voice-preview.show {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        .voice-preview audio {
+            width: 100%;
+            height: 30px;
+        }
+
+        .voice-preview-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from { 
+                opacity: 0; 
+                transform: translateY(-10px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+        
+        .loading-spinner {
+            display: none;
+            margin: 20px auto;
+        }
+        
+        .conversation-preview {
+            background: #fff3cd;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .voice-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+            color: white;
+            margin-right: 0.5rem;
+        }
+        
+        .female-voice { background: linear-gradient(45deg, #ff6b9d, #ffa726); }
+        .male-voice { background: linear-gradient(45deg, #4fc3f7, #29b6f6); }
+        .british-voice { background: linear-gradient(45deg, #ab47bc, #8e24aa); }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                margin: 1rem;
+                padding: 1rem;
+            }
+        }
+        
+        /* Voice Samples Styles */
+        .voice-samples-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 2px solid #e9ecef;
+        }
+
+        /* Tab System Styles */
+        .nav-tabs {
+            border-bottom: 3px solid #e9ecef;
+            margin-bottom: 2rem;
+        }
+
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 10px 10px 0 0;
+            color: #6c757d;
+            font-weight: 600;
+            padding: 1rem 1.5rem;
+            margin-right: 0.5rem;
+            transition: all 0.3s ease;
+            background: transparent;
+        }
+
+        .nav-tabs .nav-link:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border-bottom: 3px solid #667eea;
+            font-weight: 700;
+        }
+
+        .tab-content {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .voice-sample-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease;
+            border: 1px solid #e9ecef;
+        }
+        
+        .voice-sample-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border-color: #667eea;
+        }
+        
+        .voice-sample-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .voice-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .voice-category {
+            font-size: 0.8rem;
+            color: #666;
+            background: #e9ecef;
+            padding: 0.2rem 0.5rem;
+            border-radius: 5px;
+        }
+        
+        .audio-player {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+        
+        .samples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        
+        .category-header {
+            grid-column: 1 / -1;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #495057;
+            margin: 1rem 0 0.5rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .sample-text {
+            font-size: 0.9rem;
+            color: #666;
+            font-style: italic;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-container">
+            <!-- Header -->
+            <div class="header">
+                <h1><i class="fas fa-comments text-primary"></i> Kokoro TTS Conversation Generator</h1>
+                <p>Create realistic conversations between multiple voices or explore voice samples</p>
+                <p class="text-muted">
+                    <i class="fas fa-users"></i> Multi-voice • 
+                    <i class="fas fa-clock"></i> Natural timing • 
+                    <i class="fas fa-volume-up"></i> High quality
+                </p>
+            </div>
+
+            <!-- Tab Navigation -->
+            <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="conversation-tab" data-bs-toggle="tab" data-bs-target="#conversation-pane" type="button" role="tab" aria-controls="conversation-pane" aria-selected="true">
+                        <i class="fas fa-comments"></i> Conversation Generator
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="samples-tab" data-bs-toggle="tab" data-bs-target="#samples-pane" type="button" role="tab" aria-controls="samples-pane" aria-selected="false">
+                        <i class="fas fa-headphones"></i> Voice Samples
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="mainTabsContent">
+                <!-- Conversation Generator Tab -->
+                <div class="tab-pane fade show active" id="conversation-pane" role="tabpanel" aria-labelledby="conversation-tab">
+                    <!-- Conversation Messages -->
+                    <div id="conversation-container">
+                        <!-- Messages will be added here dynamically -->
+                    </div>
+
+                    <!-- Add Message Button -->
+                    <div class="add-message-btn" onclick="addMessage()">
+                        <i class="fas fa-plus fa-2x"></i>
+                        <h5 class="mt-2 mb-0">Add Message</h5>
+                        <small>Click to add a new voice to the conversation</small>
+                    </div>
+
+                    <!-- Conversation Controls -->
+                    <div class="conversation-controls">
+                        <h5><i class="fas fa-sliders-h"></i> Conversation Settings</h5>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="conversation-speed" class="form-label">
+                            <i class="fas fa-tachometer-alt"></i> Speech Speed
+                        </label>
+                        <input 
+                            type="range" 
+                            class="form-range" 
+                            id="conversation-speed" 
+                            min="0.5" 
+                            max="2.0" 
+                            step="0.1" 
+                            value="1.0"
+                        >
+                        <div class="text-center mt-2">
+                            <span id="speed-value">1.0x</span>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label for="silence-duration" class="form-label">
+                            <i class="fas fa-pause"></i> Pause Between Messages
+                        </label>
+                        <input 
+                            type="range" 
+                            class="form-range" 
+                            id="silence-duration" 
+                            min="0.1" 
+                            max="2.0" 
+                            step="0.1" 
+                            value="1.0"
+                        >
+                        <div class="text-center mt-2">
+                            <span id="silence-value">0.5 seconds</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conversation Preview -->
+            <div class="conversation-preview" id="conversation-preview" style="display: none;">
+                <h6><i class="fas fa-eye"></i> Conversation Preview</h6>
+                <div id="preview-content"></div>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="text-center">
+                <button type="button" class="btn btn-primary btn-lg" id="generate-btn" onclick="generateConversation()">
+                    <i class="fas fa-magic"></i> Generate Conversation
+                </button>
+                <button type="button" class="btn btn-outline-primary ms-2" onclick="clearConversation()">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading-spinner text-center" id="loading-spinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Generating conversation...</span>
+                </div>
+                <p class="mt-2">Creating your conversation... This may take a moment</p>
+                <small class="text-muted">Processing multiple voices and combining audio</small>
+            </div>
+
+            <!-- Audio Result -->
+            <div class="audio-result" id="audio-result" style="display: none;">
+                <h4><i class="fas fa-headphones"></i> Your Conversation is Ready!</h4>
+                <div id="conversation-info" class="mb-3"></div>
+                <audio controls class="w-100 mt-3" id="audio-player">
+                    Your browser does not support the audio element.
+                </audio>
+                <div class="mt-3">
+                    <button class="btn btn-success" id="download-btn">
+                        <i class="fas fa-download"></i> Download Conversation
+                    </button>
+                    <button class="btn btn-outline-primary ms-2" onclick="createAnother()">
+                        <i class="fas fa-plus"></i> Create Another
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="message-container"></div>
+                </div>
+
+                <!-- Sample Voices Tab -->
+                <div class="tab-pane fade" id="samples-pane" role="tabpanel" aria-labelledby="samples-tab">
+                    <div class="voice-samples-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4><i class="fas fa-headphones text-primary"></i> Voice Samples</h4>
+                            <button class="btn btn-outline-primary btn-sm" id="toggle-samples" onclick="toggleSamples()">
+                                <i class="fas fa-chevron-up" id="toggle-icon"></i> Hide
+                            </button>
+                        </div>
+                        <p class="sample-text mb-3">
+                            <i class="fas fa-quote-left text-muted"></i>
+                            Welcome to WinSera. We provide free Text To Speech service. This project is based on Kokoro TTS.
+                            <i class="fas fa-quote-right text-muted"></i>
+                        </p>
+                        <p class="text-muted mb-3">
+                            <i class="fas fa-info-circle"></i> 
+                            Listen to all available voices and select one for your conversation by clicking "Add to Conversation".
+                        </p>
+                        <div id="samples-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading voice samples...</span>
+                                </div>
+                                <p class="mt-2">Loading voice samples...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let messageCount = 0;
+        let currentAudioFile = null;
+        
+        const voices = {{ voices_json | safe }};
+
+        // Initialize with one message
+        document.addEventListener('DOMContentLoaded', function() {
+            addMessage();
+            updateSpeedDisplay();
+            updateSilenceDisplay();
+            
+            // Event listeners
+            document.getElementById('conversation-speed').addEventListener('input', updateSpeedDisplay);
+            document.getElementById('silence-duration').addEventListener('input', updateSilenceDisplay);
+        });
+
+        // Add a new message to the conversation
+        function addMessage() {
+            messageCount++;
+            const container = document.getElementById('conversation-container');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'conversation-message';
+            messageDiv.id = `message-${messageCount}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-number">${messageCount}</div>
+                    <button class="remove-message" onclick="removeMessage(${messageCount})" ${messageCount === 1 ? 'style="display: none;"' : ''}>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-8 mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-comment"></i> Message Text
+                        </label>
+                        <textarea 
+                            class="form-control" 
+                            rows="3" 
+                            placeholder="Enter what this voice should say..."
+                            maxlength="1000"
+                            oninput="updateCharacterCount(${messageCount}); updatePreview()"
+                            id="text-${messageCount}"
+                        ></textarea>
+                        <div class="character-count">
+                            <span id="char-count-${messageCount}">0</span>/1000 characters
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-user"></i> Voice
+                        </label>
+                        <select class="form-select" id="voice-${messageCount}" onchange="updateVoiceIndicator(${messageCount}); updatePreview(); showVoicePreview(${messageCount})">
+                            <option value="">Select a voice...</option>
+                            ${generateVoiceOptions()}
+                        </select>
+                        <div class="voice-indicator" id="voice-indicator-${messageCount}">
+                            No voice selected
+                        </div>
+                        <div class="voice-preview" id="voice-preview-${messageCount}">
+                            <span class="voice-preview-label"><i class="fas fa-headphones"></i> Voice Preview:</span>
+                            <audio controls preload="none" id="voice-audio-${messageCount}">
+                                Your browser does not support audio playback.
+                            </audio>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(messageDiv);
+            
+            // Focus on the new message text area
+            document.getElementById(`text-${messageCount}`).focus();
+            
+            // Update preview
+            updatePreview();
+        }
+
+        // Generate voice options HTML
+        function generateVoiceOptions() {
+            let html = '';
+            for (const [category, voiceList] of Object.entries(voices)) {
+                html += `<optgroup label="${category}">`;
+                for (const [voiceId, voiceName] of Object.entries(voiceList)) {
+                    html += `<option value="${voiceId}">${voiceName}</option>`;
+                }
+                html += '</optgroup>';
+            }
+            return html;
+        }
+
+        // Remove a message
+        function removeMessage(messageId) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                messageElement.remove();
+                renumberMessages();
+                updatePreview();
+            }
+        }
+
+        // Renumber messages after removal
+        function renumberMessages() {
+            const messages = document.querySelectorAll('.conversation-message');
+            messages.forEach((msg, index) => {
+                const newNumber = index + 1;
+                const numberElement = msg.querySelector('.message-number');
+                const removeButton = msg.querySelector('.remove-message');
+                
+                if (numberElement) {
+                    numberElement.textContent = newNumber;
+                }
+                
+                // Hide remove button for first message
+                if (removeButton) {
+                    removeButton.style.display = newNumber === 1 ? 'none' : 'block';
+                }
+            });
+            
+            messageCount = messages.length;
+        }
+
+        // Update character count
+        function updateCharacterCount(messageId) {
+            const textArea = document.getElementById(`text-${messageId}`);
+            const charCount = document.getElementById(`char-count-${messageId}`);
+            
+            if (textArea && charCount) {
+                const count = textArea.value.length;
+                charCount.textContent = count;
+                
+                if (count > 800) {
+                    charCount.style.color = '#dc3545';
+                } else if (count > 600) {
+                    charCount.style.color = '#ffc107';
+                } else {
+                    charCount.style.color = '#666';
+                }
+            }
+        }
+
+        // Update voice indicator
+        function updateVoiceIndicator(messageId) {
+            const voiceSelect = document.getElementById(`voice-${messageId}`);
+            const indicator = document.getElementById(`voice-indicator-${messageId}`);
+            
+            if (voiceSelect && indicator) {
+                const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+                if (selectedOption.value) {
+                    const optgroup = selectedOption.parentElement.label;
+                    indicator.textContent = `${selectedOption.text} (${optgroup})`;
+                } else {
+                    indicator.textContent = 'No voice selected';
+                }
+            }
+        }
+
+        // Show voice preview for selected voice
+        function showVoicePreview(messageId) {
+            const voiceSelect = document.getElementById(`voice-${messageId}`);
+            const previewDiv = document.getElementById(`voice-preview-${messageId}`);
+            const audioElement = document.getElementById(`voice-audio-${messageId}`);
+            
+            if (!voiceSelect || !previewDiv || !audioElement) return;
+            
+            const selectedVoice = voiceSelect.value;
+            
+            if (selectedVoice && voiceSamplesData) {
+                // Find the voice sample URL
+                let sampleUrl = null;
+                for (const [category, voices] of Object.entries(voiceSamplesData.categories)) {
+                    if (voices[selectedVoice]) {
+                        sampleUrl = voices[selectedVoice].url;
+                        break;
+                    }
+                }
+                
+                if (sampleUrl) {
+                    // Show preview with animation
+                    audioElement.src = sampleUrl;
+                    previewDiv.classList.add('show');
+                } else {
+                    // Hide preview if no sample found
+                    previewDiv.classList.remove('show');
+                }
+            } else {
+                // Hide preview if no voice selected
+                previewDiv.classList.remove('show');
+            }
+        }
+
+        // Update speed display
+        function updateSpeedDisplay() {
+            const speedInput = document.getElementById('conversation-speed');
+            const speedValue = document.getElementById('speed-value');
+            speedValue.textContent = speedInput.value + 'x';
+        }
+
+        // Update silence display
+        function updateSilenceDisplay() {
+            const silenceInput = document.getElementById('silence-duration');
+            const silenceValue = document.getElementById('silence-value');
+            silenceValue.textContent = silenceInput.value + ' seconds';
+        }
+
+        // Update conversation preview
+        function updatePreview() {
+            const messages = document.querySelectorAll('.conversation-message');
+            const preview = document.getElementById('conversation-preview');
+            const previewContent = document.getElementById('preview-content');
+            
+            let hasContent = false;
+            let previewHtml = '';
+            
+            messages.forEach((msg, index) => {
+                const messageNumber = index + 1;
+                const textArea = msg.querySelector(`#text-${messageNumber}`);
+                const voiceSelect = msg.querySelector(`#voice-${messageNumber}`);
+                
+                if (textArea && voiceSelect && textArea.value.trim() && voiceSelect.value) {
+                    hasContent = true;
+                    const voiceCategory = voiceSelect.options[voiceSelect.selectedIndex].parentElement.label;
+                    const voiceClass = voiceCategory.includes('Female') ? 'female-voice' : 
+                                    voiceCategory.includes('Male') ? 'male-voice' : 'british-voice';
+                    
+                    previewHtml += `
+                        <div class="mb-2">
+                            <span class="voice-avatar ${voiceClass}">${messageNumber}</span>
+                            <strong>${voiceSelect.options[voiceSelect.selectedIndex].text}:</strong>
+                            "${textArea.value.trim()}"
+                        </div>
+                    `;
+                }
+            });
+            
+            if (hasContent) {
+                previewContent.innerHTML = previewHtml;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+            }
+        }
+
+        // Generate conversation
+        function generateConversation() {
+            const messages = [];
+            const messageElements = document.querySelectorAll('.conversation-message');
+            
+            // Collect all messages
+            messageElements.forEach((msg, index) => {
+                const messageNumber = index + 1;
+                const textArea = document.getElementById(`text-${messageNumber}`);
+                const voiceSelect = document.getElementById(`voice-${messageNumber}`);
+                
+                if (textArea && voiceSelect) {
+                    const text = textArea.value.trim();
+                    const voice = voiceSelect.value;
+                    
+                    if (text && voice) {
+                        messages.push({
+                            text: text,
+                            voice: voice
+                        });
+                    }
+                }
+            });
+            
+            if (messages.length === 0) {
+                showMessage('Please add at least one message with text and voice selected.', 'warning');
+                return;
+            }
+            
+            // Show loading state
+            document.getElementById('generate-btn').disabled = true;
+            document.getElementById('loading-spinner').style.display = 'block';
+            document.getElementById('audio-result').style.display = 'none';
+            clearMessages();
+            
+            // Prepare data
+            const conversationData = {
+                messages: messages,
+                speed: parseFloat(document.getElementById('conversation-speed').value),
+                silence: parseFloat(document.getElementById('silence-duration').value)
+            };
+            
+            // Make API call
+            fetch('/generate_conversation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(conversationData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentAudioFile = data.audio_file;
+                    showAudioResult(`/download_conversation/${data.audio_file}`, data);
+                    showMessage(data.message, 'success');
+                } else {
+                    showMessage(data.message || 'Failed to generate conversation', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Network error. Please try again.', 'danger');
+            })
+            .finally(() => {
+                document.getElementById('generate-btn').disabled = false;
+                document.getElementById('loading-spinner').style.display = 'none';
+            });
+        }
+
+        // Show audio result
+        function showAudioResult(audioUrl, data) {
+            const audioPlayer = document.getElementById('audio-player');
+            const audioResult = document.getElementById('audio-result');
+            const downloadBtn = document.getElementById('download-btn');
+            const conversationInfo = document.getElementById('conversation-info');
+            
+            audioPlayer.src = audioUrl;
+            downloadBtn.onclick = () => downloadAudio(audioUrl);
+            
+            // Show conversation info
+            if (data.conversation_info) {
+                const info = data.conversation_info;
+                conversationInfo.innerHTML = `
+                    <div class="row text-center">
+                        <div class="col-md-4">
+                            <i class="fas fa-comments fa-2x text-primary"></i>
+                            <h6>${info.messages} Messages</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <i class="fas fa-keyboard fa-2x text-success"></i>
+                            <h6>${info.total_characters} Characters</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <i class="fas fa-users fa-2x text-info"></i>
+                            <h6>${info.voices_used.length} Voices</h6>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            audioResult.style.display = 'block';
+            audioResult.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Download audio
+        function downloadAudio(audioUrl) {
+            const link = document.createElement('a');
+            link.href = audioUrl;
+            link.download = currentAudioFile || 'conversation.wav';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Show message
+        function showMessage(message, type) {
+            const container = document.getElementById('message-container');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            container.appendChild(alertDiv);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+
+        // Clear messages
+        function clearMessages() {
+            document.getElementById('message-container').innerHTML = '';
+        }
+
+        // Clear conversation
+        function clearConversation() {
+            if (confirm('Are you sure you want to clear all messages?')) {
+                document.getElementById('conversation-container').innerHTML = '';
+                messageCount = 0;
+                addMessage();
+                document.getElementById('audio-result').style.display = 'none';
+                updatePreview();
+                clearMessages();
+            }
+        }
+
+        // Create another conversation
+        function createAnother() {
+            document.getElementById('audio-result').style.display = 'none';
+            clearMessages();
+        }
+
+        // Voice Samples Functionality
+        let voiceSamplesData = null;
+        let samplesVisible = true;
+
+        // Load voice samples on page load
+        function loadVoiceSamples() {
+            fetch('/voice_samples')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('samples-container').innerHTML = `
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Voice samples not available. Run <code>generate_voice_samples.py</code> to create them.
+                            </div>
+                        `;
+                    } else {
+                        voiceSamplesData = data;
+                        renderVoiceSamples(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading voice samples:', error);
+                    document.getElementById('samples-container').innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-times-circle"></i>
+                            Failed to load voice samples.
+                        </div>
+                    `;
+                });
+        }
+
+        // Render voice samples
+        function renderVoiceSamples(data) {
+            const container = document.getElementById('samples-container');
+            let html = '<div class="samples-grid">';
+
+            Object.entries(data.categories).forEach(([category, voices]) => {
+                // Add category header
+                html += `<div class="category-header">${category}</div>`;
+
+                // Add voice samples for this category
+                Object.entries(voices).forEach(([voiceId, voiceData]) => {
+                    html += `
+                        <div class="voice-sample-card">
+                            <div class="voice-sample-header">
+                                <span class="voice-name">${voiceData.name}</span>
+                                <span class="voice-category">${voiceData.size_kb} KB</span>
+                            </div>
+                            <audio class="audio-player" controls preload="none">
+                                <source src="${voiceData.url}" type="audio/wav">
+                                Your browser does not support audio playback.
+                            </audio>
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="selectVoiceForMessage('${voiceId}', '${voiceData.name}')">
+                                    <i class="fas fa-plus"></i> Add to Conversation
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // Select voice for a new message in conversation
+        function selectVoiceForMessage(voiceId, voiceName) {
+            // Switch to conversation tab
+            const conversationTab = new bootstrap.Tab(document.getElementById('conversation-tab'));
+            conversationTab.show();
+
+            // Add a new message if none exist or if the last message is filled
+            const messages = document.querySelectorAll('.conversation-message');
+            let targetMessage = null;
+
+            // Find the first empty message or create a new one
+            for (let message of messages) {
+                const textarea = message.querySelector('textarea');
+                const select = message.querySelector('select');
+                if (!textarea.value.trim()) {
+                    targetMessage = message;
+                    break;
+                }
+            }
+
+            // If no empty message found, create a new one
+            if (!targetMessage) {
+                addMessage();
+                const messages = document.querySelectorAll('.conversation-message');
+                targetMessage = messages[messages.length - 1];
+            }
+
+            // Set the voice in the target message
+            const voiceSelect = targetMessage.querySelector('select');
+            voiceSelect.value = voiceId;
+
+            // Update voice indicator and preview
+            const messageId = targetMessage.id.split('-')[1];
+            updateVoiceIndicator(messageId);
+            showVoicePreview(messageId);
+            updatePreview();
+
+            // Show success message
+            showMessage(`Added ${voiceName} to conversation. Add your message text!`, 'info');
+            
+            // Focus on the textarea of the target message
+            const textarea = targetMessage.querySelector('textarea');
+            textarea.focus();
+            
+            // Scroll to the target message
+            targetMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Toggle samples visibility
+        function toggleSamples() {
+            const samplesContainer = document.getElementById('samples-container');
+            const toggleIcon = document.getElementById('toggle-icon');
+            const toggleBtn = document.getElementById('toggle-samples');
+
+            if (samplesVisible) {
+                samplesContainer.style.display = 'none';
+                toggleIcon.className = 'fas fa-chevron-down';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i> Show';
+                samplesVisible = false;
+            } else {
+                samplesContainer.style.display = 'block';
+                toggleIcon.className = 'fas fa-chevron-up';
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Hide';
+                samplesVisible = true;
+            }
+        }
+
+        // Load voice samples when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            addMessage();
+            updateSpeedDisplay();
+            updateSilenceDisplay();
+            loadVoiceSamples(); // Add this line
+            
+            // Event listeners
+            document.getElementById('conversation-speed').addEventListener('input', updateSpeedDisplay);
+            document.getElementById('silence-duration').addEventListener('input', updateSilenceDisplay);
+        });
+    </script>
+</body>
+</html>

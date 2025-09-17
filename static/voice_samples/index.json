@@ -1,0 +1,201 @@
+{
+  "generated_at": "2025-08-13",
+  "sample_text": "Welcome to WinSera. We provide free Text To Speech service. This project is based on Kokoro TTS.",
+  "categories": {
+    "English (US) - Female": {
+      "af_alloy": {
+        "name": "Alloy",
+        "file": "af_alloy.wav",
+        "url": "/static/voice_samples/af_alloy.wav",
+        "size_bytes": 343084,
+        "size_kb": 335.0
+      },
+      "af_aoede": {
+        "name": "Aoede",
+        "file": "af_aoede.wav",
+        "url": "/static/voice_samples/af_aoede.wav",
+        "size_bytes": 326700,
+        "size_kb": 319.0
+      },
+      "af_bella": {
+        "name": "Bella",
+        "file": "af_bella.wav",
+        "url": "/static/voice_samples/af_bella.wav",
+        "size_bytes": 336940,
+        "size_kb": 329.0
+      },
+      "af_heart": {
+        "name": "Heart",
+        "file": "af_heart.wav",
+        "url": "/static/voice_samples/af_heart.wav",
+        "size_bytes": 331820,
+        "size_kb": 324.0
+      },
+      "af_jessica": {
+        "name": "Jessica",
+        "file": "af_jessica.wav",
+        "url": "/static/voice_samples/af_jessica.wav",
+        "size_bytes": 299052,
+        "size_kb": 292.0
+      },
+      "af_kore": {
+        "name": "Kore",
+        "file": "af_kore.wav",
+        "url": "/static/voice_samples/af_kore.wav",
+        "size_bytes": 355372,
+        "size_kb": 347.0
+      },
+      "af_nicole": {
+        "name": "Nicole",
+        "file": "af_nicole.wav",
+        "url": "/static/voice_samples/af_nicole.wav",
+        "size_bytes": 500780,
+        "size_kb": 489.0
+      },
+      "af_nova": {
+        "name": "Nova",
+        "file": "af_nova.wav",
+        "url": "/static/voice_samples/af_nova.wav",
+        "size_bytes": 322604,
+        "size_kb": 315.0
+      },
+      "af_river": {
+        "name": "River",
+        "file": "af_river.wav",
+        "url": "/static/voice_samples/af_river.wav",
+        "size_bytes": 297004,
+        "size_kb": 290.0
+      },
+      "af_sarah": {
+        "name": "Sarah",
+        "file": "af_sarah.wav",
+        "url": "/static/voice_samples/af_sarah.wav",
+        "size_bytes": 328748,
+        "size_kb": 321.0
+      },
+      "af_sky": {
+        "name": "Sky",
+        "file": "af_sky.wav",
+        "url": "/static/voice_samples/af_sky.wav",
+        "size_bytes": 322604,
+        "size_kb": 315.0
+      }
+    },
+    "English (US) - Male": {
+      "am_adam": {
+        "name": "Adam",
+        "file": "am_adam.wav",
+        "url": "/static/voice_samples/am_adam.wav",
+        "size_bytes": 314412,
+        "size_kb": 307.0
+      },
+      "am_echo": {
+        "name": "Echo",
+        "file": "am_echo.wav",
+        "url": "/static/voice_samples/am_echo.wav",
+        "size_bytes": 326700,
+        "size_kb": 319.0
+      },
+      "am_eric": {
+        "name": "Eric",
+        "file": "am_eric.wav",
+        "url": "/static/voice_samples/am_eric.wav",
+        "size_bytes": 291884,
+        "size_kb": 285.0
+      },
+      "am_fenrir": {
+        "name": "Fenrir",
+        "file": "am_fenrir.wav",
+        "url": "/static/voice_samples/am_fenrir.wav",
+        "size_bytes": 335916,
+        "size_kb": 328.0
+      },
+      "am_liam": {
+        "name": "Liam",
+        "file": "am_liam.wav",
+        "url": "/static/voice_samples/am_liam.wav",
+        "size_bytes": 306220,
+        "size_kb": 299.0
+      },
+      "am_michael": {
+        "name": "Michael",
+        "file": "am_michael.wav",
+        "url": "/static/voice_samples/am_michael.wav",
+        "size_bytes": 358444,
+        "size_kb": 350.0
+      },
+      "am_onyx": {
+        "name": "Onyx",
+        "file": "am_onyx.wav",
+        "url": "/static/voice_samples/am_onyx.wav",
+        "size_bytes": 331820,
+        "size_kb": 324.0
+      },
+      "am_puck": {
+        "name": "Puck",
+        "file": "am_puck.wav",
+        "url": "/static/voice_samples/am_puck.wav",
+        "size_bytes": 338988,
+        "size_kb": 331.0
+      }
+    },
+    "English (GB)": {
+      "bf_alice": {
+        "name": "Alice (F)",
+        "file": "bf_alice.wav",
+        "url": "/static/voice_samples/bf_alice.wav",
+        "size_bytes": 323628,
+        "size_kb": 316.0
+      },
+      "bf_emma": {
+        "name": "Emma (F)",
+        "file": "bf_emma.wav",
+        "url": "/static/voice_samples/bf_emma.wav",
+        "size_bytes": 313388,
+        "size_kb": 306.0
+      },
+      "bf_isabella": {
+        "name": "Isabella (F)",
+        "file": "bf_isabella.wav",
+        "url": "/static/voice_samples/bf_isabella.wav",
+        "size_bytes": 315436,
+        "size_kb": 308.0
+      },
+      "bf_lily": {
+        "name": "Lily (F)",
+        "file": "bf_lily.wav",
+        "url": "/static/voice_samples/bf_lily.wav",
+        "size_bytes": 315436,
+        "size_kb": 308.0
+      },
+      "bm_daniel": {
+        "name": "Daniel (M)",
+        "file": "bm_daniel.wav",
+        "url": "/static/voice_samples/bm_daniel.wav",
+        "size_bytes": 304172,
+        "size_kb": 297.0
+      },
+      "bm_fable": {
+        "name": "Fable (M)",
+        "file": "bm_fable.wav",
+        "url": "/static/voice_samples/bm_fable.wav",
+        "size_bytes": 328748,
+        "size_kb": 321.0
+      },
+      "bm_george": {
+        "name": "George (M)",
+        "file": "bm_george.wav",
+        "url": "/static/voice_samples/bm_george.wav",
+        "size_bytes": 350252,
+        "size_kb": 342.0
+      },
+      "bm_lewis": {
+        "name": "Lewis (M)",
+        "file": "bm_lewis.wav",
+        "url": "/static/voice_samples/bm_lewis.wav",
+        "size_bytes": 341036,
+        "size_kb": 333.0
+      }
+    }
+  }
+}

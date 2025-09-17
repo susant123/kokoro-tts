@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/8413e640-59e9-490e-861d-49187e967526
 
 ## Prerequisites
 
-- Python 3.12
+- Python 3.11 (recommended) or Python 3.10
 
 ## Installation
 
@@ -55,13 +55,13 @@ uv sync
 ```
 **With `pip`:**
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+py -3.11 -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 Note: You can also use `uv` as a faster alternative to pip for package installation. (This is a uv project)
-Note: Python>=3.13 is not currently supported.
+Note: Python 3.12+ is not currently available on this system. Use Python 3.11 for best compatibility.
 
 3. Download the required model files:
 ```bash

@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 AI Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+        }
+        
+        .chat-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .chat-header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            color: white;
+            text-align: center;
+        }
+        
+        .chat-main {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+        }
+        
+        .chat-messages {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            height: 600px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .chat-controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            height: fit-content;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            position: relative;
+        }
+        
+        .message.user {
+            background: #007bff;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        
+        .message.assistant {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            align-self: flex-start;
+        }
+        
+        .message-audio {
+            margin-top: 8px;
+        }
+        
+        .message-time {
+            font-size: 0.7em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .typing-indicator {
+            display: none;
+            align-self: flex-start;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 18px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+        }
+        
+        .typing-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6c757d;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        
+        .chat-input-container {
+            position: relative;
+            margin-top: 20px;
+        }
+        
+        .chat-input {
+            border-radius: 25px;
+            padding-right: 60px;
+        }
+        
+        .send-button {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: #007bff;
+            color: white;
+        }
+        
+        .send-button:hover {
+            background: #0056b3;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .status-online { background: #28a745; }
+        .status-offline { background: #dc3545; }
+        .status-warning { background: #ffc107; }
+        
+        .voice-selector {
+            margin-bottom: 15px;
+        }
+        
+        .stats-panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        /* Speech Recognition Styles */
+        .speech-controls {
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .mic-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .mic-button.listening {
+            background: #dc3545;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+        
+        .mic-button.processing {
+            background: #ffc107;
+            color: white;
+        }
+        
+        .mic-button:not(.listening):not(.processing) {
+            background: #28a745;
+            color: white;
+        }
+        
+        .mic-button:hover:not(.listening) {
+            background: #20c997;
+            transform: scale(1.05);
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            50% { box-shadow: 0 0 0 15px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+        
+        .transcript-display {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            min-height: 40px;
+            font-style: italic;
+            color: #6c757d;
+        }
+        
+        .transcript-display.active {
+            border-color: #007bff;
+            color: #000;
+            font-style: normal;
+        }
+        
+        .speech-status {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        
+        .speech-status.listening {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .speech-status.processing {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        
+        /* Context Section Styles */
+        .context-active {
+            border-left: 4px solid #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        
+        .context-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #28a745;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        
+        #context-input {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-main {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <div class="chat-header">
+            <h1><i class="fas fa-robot"></i> AI Chat</h1>
+            <p class="mb-0">
+                Conversational AI with <strong>Llama 3.2</strong> + GPU-accelerated TTS
+                <span id="status-indicator" class="status-indicator ms-3">
+                    <span class="status-dot status-warning"></span>
+                    <span>Connecting...</span>
+                </span>
+            </p>
+        </div>
+        
+        <!-- Background Audio for Bluetooth Headphone Connection -->
+        <audio id="background-audio" loop preload="auto" style="display: none;">
+            <source src="/static/background_audio.wav" type="audio/wav">
+        </audio>
+        
+        <!-- Main Chat Area -->
+        <div class="chat-main">
+            <!-- Messages -->
+            <div class="card">
+                <div class="card-body p-0">
+                    <div id="chat-messages" class="chat-messages">
+                        <div class="message assistant">
+                            <strong>🤖 AI:</strong> Hello! I'm ready to chat. I can discuss any topic and respond with natural-sounding speech. What would you like to talk about?
+                        </div>
+                        
+                        <!-- Typing indicator -->
+                        <div id="typing-indicator" class="typing-indicator">
+                            <i class="fas fa-robot me-2"></i>
+                            <span class="typing-dots">
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Input Area -->
+                    <div class="chat-input-container">
+                        <div class="input-group">
+                            <input type="text" id="chat-input" class="form-control chat-input" 
+                                   placeholder="Type your message here..." maxlength="1000">
+                            <button id="send-button" class="send-button" title="Send message">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Controls Panel -->
+            <div class="chat-controls">
+                <h5><i class="fas fa-cog"></i> Controls</h5>
+                
+                <!-- Speech Recognition -->
+                <div class="speech-controls">
+                    <h6><i class="fas fa-microphone"></i> Voice Input</h6>
+                    <div class="text-center">
+                        <button id="mic-button" class="mic-button" title="Click to start voice input">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                    </div>
+                    <div id="transcript-display" class="transcript-display">
+                        Click microphone → speak → pause 2 seconds to send
+                    </div>
+                    <div id="speech-status" class="speech-status">
+                        Ready for voice input
+                    </div>
+                    <div class="mt-2">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="auto-send-speech" checked>
+                            <label class="form-check-label" for="auto-send-speech">
+                                Auto-send speech
+                            </label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="continuous-listening">
+                            <label class="form-check-label" for="continuous-listening">
+                                Continuous mode
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Context Input -->
+                <div class="mb-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <label class="form-label mb-0">
+                            <i class="fas fa-brain"></i> AI Context
+                        </label>
+                        <button id="toggle-context" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div id="context-section" class="collapse">
+                        <textarea id="context-input" class="form-control mb-2" rows="4" 
+                                  placeholder="Set the AI's role and behavior... 
+Examples:
+• You are a Java senior developer interviewer. Ask me challenging technical questions.
+• Act as an HR interviewer and provide feedback on my responses.
+• You are a helpful coding mentor for Python beginners."></textarea>
+                        <div class="d-flex gap-2">
+                            <button id="apply-context" class="btn btn-primary btn-sm">
+                                <i class="fas fa-check"></i> Apply Context
+                            </button>
+                            <button id="clear-context" class="btn btn-outline-warning btn-sm">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                        <div id="context-status" class="mt-2 small text-muted">
+                            No context set
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Selector -->
+                <div class="voice-selector">
+                    <label for="voice-select" class="form-label">
+                        <i class="fas fa-microphone"></i> TTS Voice
+                    </label>
+                    <select id="voice-select" class="form-select">
+                        <option value="">Loading voices...</option>
+                    </select>
+                </div>
+                
+                <!-- Background Audio Controls -->
+                <div class="mb-3">
+                    <label for="bg-volume" class="form-label">
+                        <i class="fas fa-music"></i> Background Audio
+                    </label>
+                    <div class="d-flex gap-2 align-items-center mb-2">
+                        <button id="toggle-bg-audio" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-music"></i> Enable BG Music
+                        </button>
+                    </div>
+                    <input type="range" id="bg-volume" class="form-range" min="0" max="20" value="5" 
+                           title="Background music volume (keeps Bluetooth connected)">
+                    <small class="text-muted">Keeps Bluetooth headphones connected</small>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="d-grid gap-2">
+                    <button id="clear-chat" class="btn btn-outline-warning">
+                        <i class="fas fa-trash"></i> Clear Chat
+                    </button>
+                    <button id="save-chat" class="btn btn-outline-primary">
+                        <i class="fas fa-save"></i> Save Conversation
+                    </button>
+                    <button id="toggle-auto-play" class="btn btn-outline-success">
+                        <i class="fas fa-volume-up"></i> Auto-play: ON
+                    </button>
+                </div>
+                
+                <!-- Stats Panel -->
+                <div id="stats-panel" class="stats-panel">
+                    <h6><i class="fas fa-chart-bar"></i> Statistics</h6>
+                    <div class="stats-item">
+                        <span>Messages:</span>
+                        <span id="stat-messages">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>AI Responses:</span>
+                        <span id="stat-ai-responses">0</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>Avg Response:</span>
+                        <span id="stat-avg-time">0.0s</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class KokoroChat {
+            constructor() {
+                this.messagesContainer = document.getElementById('chat-messages');
+                this.chatInput = document.getElementById('chat-input');
+                this.sendButton = document.getElementById('send-button');
+                this.typingIndicator = document.getElementById('typing-indicator');
+                this.statusIndicator = document.getElementById('status-indicator');
+                this.voiceSelect = document.getElementById('voice-select');
+                
+                // Background audio elements
+                this.backgroundAudio = document.getElementById('background-audio');
+                this.bgVolumeSlider = document.getElementById('bg-volume');
+                this.toggleBgButton = document.getElementById('toggle-bg-audio');
+                
+                // Speech recognition elements
+                this.micButton = document.getElementById('mic-button');
+                this.transcriptDisplay = document.getElementById('transcript-display');
+                this.speechStatus = document.getElementById('speech-status');
+                this.autoSendSpeech = document.getElementById('auto-send-speech');
+                this.continuousListening = document.getElementById('continuous-listening');
+                
+                // Context elements
+                this.contextInput = document.getElementById('context-input');
+                this.contextSection = document.getElementById('context-section');
+                this.toggleContextButton = document.getElementById('toggle-context');
+                this.applyContextButton = document.getElementById('apply-context');
+                this.clearContextButton = document.getElementById('clear-context');
+                this.contextStatus = document.getElementById('context-status');
+                
+                this.autoPlay = true;
+                this.bgMusicEnabled = false;
+                this.responseTimes = [];
+                this.currentContext = '';
+                this.contextApplied = false;
+                
+                // Speech recognition setup
+                this.speechRecognition = null;
+                this.isListening = false;
+                this.currentTranscript = '';
+                
+                this.initializeEventListeners();
+                this.initializeBackgroundAudio();
+                this.initializeSpeechRecognition();
+                this.loadVoices();
+                this.checkStatus();
+                
+                // Auto-scroll to bottom
+                this.scrollToBottom();
+            }
+            
+            initializeEventListeners() {
+                // Send message
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+                
+                // Voice change
+                this.voiceSelect.addEventListener('change', () => this.changeVoice());
+                
+                // Control buttons
+                document.getElementById('clear-chat').addEventListener('click', () => this.clearChat());
+                document.getElementById('save-chat').addEventListener('click', () => this.saveChat());
+                document.getElementById('toggle-auto-play').addEventListener('click', () => this.toggleAutoPlay());
+                
+                // Background audio controls
+                this.toggleBgButton.addEventListener('click', () => this.toggleBackgroundAudio());
+                this.bgVolumeSlider.addEventListener('input', () => this.updateBackgroundVolume());
+                
+                // Speech recognition controls
+                this.micButton.addEventListener('click', () => this.toggleSpeechRecognition());
+                this.continuousListening.addEventListener('change', () => this.updateContinuousMode());
+                
+                // Context controls
+                this.toggleContextButton.addEventListener('click', () => this.toggleContextSection());
+                this.applyContextButton.addEventListener('click', () => this.applyContext());
+                this.clearContextButton.addEventListener('click', () => this.clearContext());
+            }
+            
+            async sendMessage() {
+                const message = this.chatInput.value.trim();
+                if (!message) return;
+                
+                // Add user message
+                this.addMessage('user', message);
+                this.chatInput.value = '';
+                this.chatInput.disabled = true;
+                this.sendButton.disabled = true;
+                
+                // Show typing indicator
+                this.showTypingIndicator();
+                
+                try {
+                    const requestBody = { message: message };
+                    if (this.contextApplied && this.currentContext) {
+                        requestBody.context = this.currentContext;
+                    }
+                    
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.addMessage('assistant', data.ai_response, data.audio_file, data.timing);
+                        this.updateStats(data.timing);
+                    } else {
+                        this.addMessage('system', `Error: ${data.error}`, null, null, 'text-danger');
+                    }
+                    
+                } catch (error) {
+                    this.addMessage('system', `Connection error: ${error.message}`, null, null, 'text-danger');
+                } finally {
+                    this.hideTypingIndicator();
+                    this.chatInput.disabled = false;
+                    this.sendButton.disabled = false;
+                    this.chatInput.focus();
+                }
+            }
+            
+            addMessage(role, content, audioFile = null, timing = null, extraClass = '') {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role} ${extraClass}`;
+                
+                let html = '';
+                
+                if (role === 'user') {
+                    html = `<strong>👤 You:</strong> ${this.escapeHtml(content)}`;
+                } else if (role === 'assistant') {
+                    html = `<strong>🤖 AI:</strong> ${this.escapeHtml(content)}`;
+                } else {
+                    html = content;
+                }
+                
+                if (timing) {
+                    html += `<div class="message-time">
+                        <i class="fas fa-clock"></i> AI: ${timing.ai_time.toFixed(1)}s, 
+                        TTS: ${timing.tts_time.toFixed(1)}s, 
+                        Total: ${timing.total_time.toFixed(1)}s
+                    </div>`;
+                }
+                
+                messageDiv.innerHTML = html;
+                
+                // Add audio player if available
+                if (audioFile && this.autoPlay) {
+                    const audioDiv = document.createElement('div');
+                    audioDiv.className = 'message-audio';
+                    audioDiv.innerHTML = `
+                        <audio controls autoplay style="width: 100%; max-width: 300px;">
+                            <source src="/audio/${audioFile}" type="audio/wav">
+                        </audio>
+                    `;
+                    messageDiv.appendChild(audioDiv);
+                }
+                
+                this.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+            
+            showTypingIndicator() {
+                this.typingIndicator.style.display = 'flex';
+                this.scrollToBottom();
+            }
+            
+            hideTypingIndicator() {
+                this.typingIndicator.style.display = 'none';
+            }
+            
+            scrollToBottom() {
+                setTimeout(() => {
+                    this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+                }, 100);
+            }
+            
+            async loadVoices() {
+                try {
+                    const response = await fetch('/api/voices');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.voiceSelect.innerHTML = '';
+                        
+                        for (const [voice, description] of Object.entries(data.voices)) {
+                            const option = document.createElement('option');
+                            option.value = voice;
+                            option.textContent = description;
+                            option.selected = voice === data.current_voice;
+                            this.voiceSelect.appendChild(option);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load voices:', error);
+                }
+            }
+            
+            async changeVoice() {
+                const voice = this.voiceSelect.value;
+                if (!voice) return;
+                
+                try {
+                    const response = await fetch('/api/voice', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voice: voice })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.addMessage('system', `🎤 Voice changed to: ${data.message.replace('Voice changed to ', '')}`, null, null, 'text-info');
+                    }
+                } catch (error) {
+                    console.error('Failed to change voice:', error);
+                }
+            }
+            
+            async clearChat() {
+                if (!confirm('Are you sure you want to clear the chat history?')) return;
+                
+                try {
+                    const response = await fetch('/api/clear');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.messagesContainer.innerHTML = `
+                            <div class="message assistant">
+                                <strong>🤖  AI:</strong> Chat history cleared. How can I help you?
+                            </div>
+                            <div id="typing-indicator" class="typing-indicator">
+                                <i class="fas fa-robot me-2"></i>
+                                <span class="typing-dots">
+                                    <span class="typing-dot"></span>
+                                    <span class="typing-dot"></span>
+                                    <span class="typing-dot"></span>
+                                </span>
+                            </div>
+                        `;
+                        this.typingIndicator = document.getElementById('typing-indicator');
+                        this.responseTimes = [];
+                        this.updateStatsDisplay();
+                        
+                        // Also clear context when chat is cleared
+                        this.clearContext();
+                    }
+                } catch (error) {
+                    console.error('Failed to clear chat:', error);
+                }
+            }
+            
+            async saveChat() {
+                try {
+                    const response = await fetch('/api/save');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.addMessage('system', `💾 ${data.message}`, null, null, 'text-success');
+                    }
+                } catch (error) {
+                    console.error('Failed to save chat:', error);
+                }
+            }
+            
+            toggleAutoPlay() {
+                this.autoPlay = !this.autoPlay;
+                const button = document.getElementById('toggle-auto-play');
+                const icon = button.querySelector('i');
+                
+                if (this.autoPlay) {
+                    icon.className = 'fas fa-volume-up';
+                    button.innerHTML = '<i class="fas fa-volume-up"></i> Auto-play: ON';
+                    button.className = 'btn btn-outline-success';
+                } else {
+                    icon.className = 'fas fa-volume-mute';
+                    button.innerHTML = '<i class="fas fa-volume-mute"></i> Auto-play: OFF';
+                    button.className = 'btn btn-outline-secondary';
+                }
+            }
+            
+            async checkStatus() {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+                    
+                    if (data.success && data.ollama_connected) {
+                        this.updateStatus('online', 'Connected');
+                    } else {
+                        this.updateStatus('offline', 'Ollama Offline');
+                    }
+                } catch (error) {
+                    this.updateStatus('offline', 'Connection Failed');
+                }
+                
+                // Check status every 30 seconds
+                setTimeout(() => this.checkStatus(), 30000);
+            }
+            
+            updateStatus(status, text) {
+                const dot = this.statusIndicator.querySelector('.status-dot');
+                const span = this.statusIndicator.querySelector('span:last-child');
+                
+                dot.className = `status-dot status-${status}`;
+                span.textContent = text;
+            }
+            
+            updateStats(timing) {
+                this.responseTimes.push(timing.total_time);
+                this.updateStatsDisplay();
+            }
+            
+            updateStatsDisplay() {
+                const totalMessages = document.querySelectorAll('.message.user').length;
+                const aiResponses = document.querySelectorAll('.message.assistant').length;
+                const avgTime = this.responseTimes.length > 0 
+                    ? this.responseTimes.reduce((a, b) => a + b, 0) / this.responseTimes.length 
+                    : 0;
+                
+                document.getElementById('stat-messages').textContent = totalMessages;
+                document.getElementById('stat-ai-responses').textContent = aiResponses;
+                document.getElementById('stat-avg-time').textContent = avgTime.toFixed(1) + 's';
+            }
+            
+            // Context Management Methods
+            toggleContextSection() {
+                const isCollapsed = this.contextSection.classList.contains('show');
+                
+                if (isCollapsed) {
+                    this.contextSection.classList.remove('show');
+                    this.toggleContextButton.innerHTML = '<i class="fas fa-chevron-down"></i>';
+                } else {
+                    this.contextSection.classList.add('show');
+                    this.toggleContextButton.innerHTML = '<i class="fas fa-chevron-up"></i>';
+                }
+            }
+            
+            applyContext() {
+                const context = this.contextInput.value.trim();
+                
+                if (!context) {
+                    this.addMessage('system', '⚠️ Please enter a context before applying.', null, null, 'text-warning');
+                    return;
+                }
+                
+                this.currentContext = context;
+                this.contextApplied = true;
+                
+                // Update UI
+                this.updateContextStatus();
+                this.addMessage('system', `🧠 Context applied: "${context.substring(0, 100)}${context.length > 100 ? '...' : ''}"`, null, null, 'text-info');
+                
+                // Collapse the section
+                this.contextSection.classList.remove('show');
+                this.toggleContextButton.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            }
+            
+            clearContext() {
+                this.currentContext = '';
+                this.contextApplied = false;
+                this.contextInput.value = '';
+                
+                // Update UI
+                this.updateContextStatus();
+                this.addMessage('system', '🧠 Context cleared. AI will use default behavior.', null, null, 'text-info');
+            }
+            
+            updateContextStatus() {
+                if (this.contextApplied && this.currentContext) {
+                    this.contextStatus.textContent = `Active: "${this.currentContext.substring(0, 50)}${this.currentContext.length > 50 ? '...' : ''}"`;
+                    this.contextStatus.className = 'mt-2 small text-success';
+                    
+                    // Add visual indicator to chat header
+                    let indicator = document.querySelector('.context-indicator');
+                    if (!indicator) {
+                        indicator = document.createElement('div');
+                        indicator.className = 'context-indicator';
+                        document.querySelector('.chat-header').style.position = 'relative';
+                        document.querySelector('.chat-header').appendChild(indicator);
+                    }
+                    indicator.textContent = 'CONTEXT ACTIVE';
+                    
+                } else {
+                    this.contextStatus.textContent = 'No context set';
+                    this.contextStatus.className = 'mt-2 small text-muted';
+                    
+                    // Remove visual indicator
+                    const indicator = document.querySelector('.context-indicator');
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+            
+            initializeBackgroundAudio() {
+                // Set initial volume (very low)
+                this.backgroundAudio.volume = 0.05; // 5% volume
+                
+                // Try to enable audio on first user interaction
+                document.addEventListener('click', () => this.enableAudioContext(), { once: true });
+                document.addEventListener('keydown', () => this.enableAudioContext(), { once: true });
+            }
+            
+            enableAudioContext() {
+                // Some browsers require user interaction to play audio
+                if (this.bgMusicEnabled && this.backgroundAudio.paused) {
+                    this.backgroundAudio.play().catch(e => {
+                        console.log('Background audio autoplay blocked:', e);
+                    });
+                }
+            }
+            
+            toggleBackgroundAudio() {
+                this.bgMusicEnabled = !this.bgMusicEnabled;
+                
+                if (this.bgMusicEnabled) {
+                    this.backgroundAudio.play().then(() => {
+                        this.toggleBgButton.innerHTML = '<i class="fas fa-music"></i> BG Music: ON';
+                        this.toggleBgButton.className = 'btn btn-success btn-sm';
+                        this.addMessage('system', '🎵 Background music enabled (keeps Bluetooth connected)', null, null, 'text-info');
+                    }).catch(e => {
+                        console.error('Failed to play background audio:', e);
+                        this.addMessage('system', '⚠️ Background music failed to start. Please try clicking again.', null, null, 'text-warning');
+                        this.bgMusicEnabled = false;
+                    });
+                } else {
+                    this.backgroundAudio.pause();
+                    this.toggleBgButton.innerHTML = '<i class="fas fa-music"></i> Enable BG Music';
+                    this.toggleBgButton.className = 'btn btn-outline-secondary btn-sm';
+                    this.addMessage('system', '🔇 Background music disabled', null, null, 'text-info');
+                }
+            }
+            
+            updateBackgroundVolume() {
+                const volume = this.bgVolumeSlider.value / 100; // Convert to 0-0.2 range
+                this.backgroundAudio.volume = volume;
+                
+                // Show volume feedback
+                const percentage = Math.round(volume * 100);
+                this.bgVolumeSlider.title = `Background volume: ${percentage}% (keeps Bluetooth connected)`;
+            }
+            
+            initializeSpeechRecognition() {
+                // Check if Speech Recognition is supported
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    this.speechRecognition = new SpeechRecognition();
+                    
+                    // Configure speech recognition
+                    this.speechRecognition.continuous = true;  // Enable continuous listening
+                    this.speechRecognition.interimResults = true;
+                    this.speechRecognition.lang = 'en-US';
+                    this.speechRecognition.maxAlternatives = 1;
+                    
+                    // Enhanced voice activity detection settings
+                    this.lastSpeechTime = 0;
+                    this.lastSignificantSpeechTime = 0;  // Track when we last had significant speech
+                    this.speechTimeout = null;
+                    this.silenceThreshold = 6000; // Increased to 6 seconds for very conservative detection
+                    this.minimumSpeechLength = 8; // Minimum characters before considering significant speech
+                    this.speechBuffer = '';  // Buffer to accumulate speech within a session
+                    this.persistentSpeechBuffer = ''; // Persistent buffer across recognition restarts
+                    this.isSignificantSpeechDetected = false;
+                    this.isManualStop = false; // Track if user manually stopped
+                    this.recognitionRestartCount = 0; // Track restarts
+                    this.speechEvents = []; // Track speech events to detect continuous speaking
+                    
+                    // Event handlers
+                    this.speechRecognition.onstart = () => this.onSpeechStart();
+                    this.speechRecognition.onresult = (event) => this.onSpeechResult(event);
+                    this.speechRecognition.onerror = (event) => this.onSpeechError(event);
+                    this.speechRecognition.onend = () => this.onSpeechEnd();
+                    
+                    this.updateSpeechStatus('Speech recognition ready - pause 3 seconds to send message');
+                } else {
+                    this.updateSpeechStatus('Speech recognition not supported in this browser', 'error');
+                    this.micButton.disabled = true;
+                    this.micButton.title = 'Speech recognition not supported';
+                }
+            }
+            
+            toggleSpeechRecognition() {
+                if (!this.speechRecognition) return;
+                
+                if (this.isListening) {
+                    this.stopSpeechRecognition();
+                } else {
+                    this.startSpeechRecognition();
+                }
+            }
+            
+            startSpeechRecognition() {
+                if (!this.speechRecognition || this.isListening) return;
+                
+                try {
+                    this.speechRecognition.start();
+                } catch (error) {
+                    console.error('Speech recognition error:', error);
+                    this.updateSpeechStatus('Failed to start speech recognition', 'error');
+                }
+            }
+            
+            stopSpeechRecognition() {
+                if (!this.speechRecognition || !this.isListening) return;
+                
+                console.log('Manually stopping speech recognition');
+                this.isManualStop = true;
+                this.speechRecognition.stop();
+            }
+            
+            onSpeechStart() {
+                this.isListening = true;
+                this.micButton.classList.add('listening');
+                this.micButton.querySelector('i').className = 'fas fa-stop';
+                
+                // Clear processing state from previous sessions
+                this.micButton.classList.remove('processing');
+                this.speechStatus.classList.remove('processing');
+                
+                // Determine if this is a fresh start or continuation
+                const isFreshStart = this.isManualStop || this.persistentSpeechBuffer === '';
+                
+                if (isFreshStart) {
+                    // Fresh start - reset everything
+                    this.updateSpeechStatus('Listening... Start speaking now', 'listening');
+                    this.transcriptDisplay.textContent = 'Listening...';
+                    this.persistentSpeechBuffer = '';
+                    this.recognitionRestartCount = 0;
+                    this.speechEvents = [];
+                    console.log('Fresh speech recognition start');
+                } else {
+                    // Continuation after browser restart
+                    this.recognitionRestartCount++;
+                    this.updateSpeechStatus(`Continuing... (restart #${this.recognitionRestartCount})`, 'listening');
+                    this.transcriptDisplay.textContent = this.persistentSpeechBuffer + ' [continuing...]';
+                    console.log('Speech recognition continued (restart #' + this.recognitionRestartCount + ')');
+                }
+                
+                this.transcriptDisplay.classList.add('active');
+                this.isManualStop = false;
+                
+                // Reset per-session variables but preserve persistent data
+                this.speechBuffer = '';
+                this.isSignificantSpeechDetected = (this.persistentSpeechBuffer.length >= this.minimumSpeechLength);
+                this.lastSpeechTime = Date.now();
+            }
+            
+            onSpeechResult(event) {
+                let interimTranscript = '';
+                let finalTranscript = '';
+                
+                // Process all results from this recognition session
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                // Get the current session transcript (final has priority)
+                const currentSessionTranscript = finalTranscript || interimTranscript;
+                
+                if (currentSessionTranscript.trim().length > 0) {
+                    // Track this speech activity
+                    this.trackSpeechEvent();
+                    this.lastSpeechTime = Date.now();
+                    
+                    // CRITICAL: Always accumulate final transcripts to persistent buffer
+                    if (finalTranscript.trim().length > 0) {
+                        // Add final transcript to our persistent buffer
+                        if (this.persistentSpeechBuffer) {
+                            this.persistentSpeechBuffer += ' ' + finalTranscript.trim();
+                        } else {
+                            this.persistentSpeechBuffer = finalTranscript.trim();
+                        }
+                        console.log('Added to persistent buffer:', finalTranscript, 'Total:', this.persistentSpeechBuffer);
+                    }
+                    
+                    // Build display transcript: persistent buffer + current interim
+                    let displayTranscript = this.persistentSpeechBuffer;
+                    if (interimTranscript.trim().length > 0) {
+                        displayTranscript += (displayTranscript ? ' ' : '') + interimTranscript.trim();
+                    }
+                    
+                    // Update the display
+                    this.transcriptDisplay.textContent = displayTranscript || 'Listening...';
+                    
+                    // Check if we have significant accumulated speech
+                    if (displayTranscript.trim().length >= this.minimumSpeechLength) {
+                        this.isSignificantSpeechDetected = true;
+                        this.lastSignificantSpeechTime = Date.now();
+                        
+                        // Show we're capturing speech
+                        const preview = displayTranscript.length > 50 ? 
+                            displayTranscript.substring(0, 50) + '...' : displayTranscript;
+                        this.updateSpeechStatus(`Capturing: "${preview}"`, 'listening');
+                    }
+                    
+                    // Clear any existing timeout
+                    if (this.speechTimeout) {
+                        clearTimeout(this.speechTimeout);
+                        this.speechTimeout = null;
+                    }
+                    
+                    // ONLY set timeout for final results when we have significant speech
+                    // AND user isn't actively continuing to speak
+                    if (finalTranscript && this.isSignificantSpeechDetected) {
+                        // Use a longer delay and check for continued activity
+                        this.speechTimeout = setTimeout(() => {
+                            const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
+                            const hasRecentActivity = this.isActivelySpeaking();
+                            
+                            // Only send if truly quiet for the full threshold period
+                            if (timeSinceLastSpeech >= this.silenceThreshold && !hasRecentActivity) {
+                                console.log('Confirmed silence - processing complete speech:', this.persistentSpeechBuffer);
+                                this.processSpeechResult(this.persistentSpeechBuffer);
+                            } else {
+                                console.log('Still active or too recent - not sending yet');
+                            }
+                        }, this.silenceThreshold);
+                    }
+                } else {
+                    // No new transcript but show what we have accumulated
+                    this.transcriptDisplay.textContent = this.persistentSpeechBuffer || 'Listening...';
+                }
+            }
+            
+            processSpeechResult(transcript) {
+                // Validate transcript
+                const cleanTranscript = transcript.trim();
+                if (!cleanTranscript || cleanTranscript.length < 2) {
+                    console.log('Transcript too short or empty, ignoring:', cleanTranscript);
+                    this.resetSpeechUI();
+                    return;
+                }
+                
+                // Prevent double processing
+                if (this.speechStatus.classList.contains('processing')) {
+                    console.log('Already processing speech, ignoring duplicate');
+                    return;
+                }
+                
+                console.log('Processing complete speech result:', cleanTranscript);
+                
+                // Store for potential sending
+                this.currentTranscript = cleanTranscript;
+                
+                // Update UI to processing state
+                this.updateSpeechStatus('Processing speech...', 'processing');
+                this.micButton.classList.remove('listening');
+                this.micButton.classList.add('processing');
+                
+                // Clear any pending timeouts
+                if (this.speechTimeout) {
+                    clearTimeout(this.speechTimeout);
+                    this.speechTimeout = null;
+                }
+                
+                // Stop current recognition to prevent interference
+                if (this.isListening) {
+                    console.log('Stopping recognition for processing');
+                    this.isManualStop = true;
+                    try {
+                        this.speechRecognition.stop();
+                    } catch (e) {
+                        console.warn('Error stopping recognition:', e);
+                    }
+                }
+                
+                // Reset all speech buffers since we're processing this complete result
+                this.speechBuffer = '';
+                this.persistentSpeechBuffer = '';
+                this.isSignificantSpeechDetected = false;
+                this.recognitionRestartCount = 0;
+                this.speechEvents = []; // Clear activity tracking
+                
+                // Auto-send if enabled, otherwise prepare for manual send
+                if (this.autoSendSpeech.checked) {
+                    console.log('Auto-sending processed speech');
+                    setTimeout(() => {
+                        this.sendTranscriptAsMessage();
+                    }, 300); // Brief delay for UI feedback
+                } else {
+                    // Manual mode - show transcript and wait for user action
+                    this.transcriptDisplay.textContent = cleanTranscript;
+                    this.updateSpeechStatus('Speech ready. Click Send to submit or microphone for more input.');
+                    this.resetSpeechUI();
+                }
+            }
+            
+            onSpeechError(event) {
+                console.error('Speech recognition error:', event.error);
+                
+                let errorMessage = 'Speech recognition error';
+                switch (event.error) {
+                    case 'no-speech':
+                        errorMessage = 'No speech detected. Try speaking again.';
+                        break;
+                    case 'audio-capture':
+                        errorMessage = 'Microphone access denied or unavailable';
+                        break;
+                    case 'not-allowed':
+                        errorMessage = 'Microphone permission denied';
+                        break;
+                    case 'network':
+                        errorMessage = 'Network error during speech recognition';
+                        break;
+                    default:
+                        errorMessage = `Speech error: ${event.error}`;
+                }
+                
+                this.updateSpeechStatus(errorMessage, 'error');
+                this.resetSpeechUI();
+            }
+            
+            onSpeechEnd() {
+                console.log('Speech recognition ended. Manual stop:', this.isManualStop, 'Persistent buffer:', this.persistentSpeechBuffer);
+                this.isListening = false;
+                
+                // If this was a manual stop by user clicking stop button
+                if (this.isManualStop) {
+                    console.log('Manual stop - processing all accumulated speech');
+                    
+                    // Process accumulated speech if we have any and auto-send is enabled
+                    if (this.persistentSpeechBuffer.trim().length > 0) {
+                        if (this.autoSendSpeech.checked) {
+                            console.log('Auto-sending accumulated speech on manual stop:', this.persistentSpeechBuffer);
+                            this.processSpeechResult(this.persistentSpeechBuffer.trim());
+                        } else {
+                            // Manual send mode - just show what we captured
+                            this.transcriptDisplay.textContent = this.persistentSpeechBuffer;
+                            this.updateSpeechStatus('Speech captured. Click Send or microphone again.');
+                            this.resetSpeechUI();
+                        }
+                    } else {
+                        this.updateSpeechStatus('No speech captured. Click microphone to try again.');
+                        this.resetSpeechUI();
+                    }
+                    return;
+                }
+                
+                // This is an automatic end due to browser limitations - check if we should restart
+                const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
+                const hasSignificantSpeech = this.persistentSpeechBuffer.trim().length > this.minimumSpeechLength;
+                const shouldRestart = hasSignificantSpeech && timeSinceLastSpeech < 3000; // Recent speech activity
+                
+                console.log('Auto-end evaluation:', {
+                    timeSinceLastSpeech,
+                    hasSignificantSpeech,
+                    shouldRestart,
+                    persistentBuffer: this.persistentSpeechBuffer
+                });
+                
+                if (shouldRestart) {
+                    // Browser restart due to limitations - continue listening
+                    console.log('Auto-restarting due to browser limitations');
+                    this.recognitionRestartCount++;
+                    
+                    setTimeout(() => {
+                        if (!this.isListening && !this.speechStatus.classList.contains('processing')) {
+                            console.log('Restarting speech recognition (restart #' + this.recognitionRestartCount + ')');
+                            this.startSpeechRecognition();
+                        }
+                    }, 100);
+                    return;
+                }
+                
+                // Natural end - no recent activity or user stopped speaking
+                console.log('Natural speech end');
+                
+                // If we have accumulated significant speech, process it
+                if (this.persistentSpeechBuffer.trim().length >= this.minimumSpeechLength) {
+                    if (this.autoSendSpeech.checked) {
+                        console.log('Auto-sending accumulated speech on natural end:', this.persistentSpeechBuffer);
+                        // Small delay to ensure we don't miss any final words
+                        setTimeout(() => {
+                            this.processSpeechResult(this.persistentSpeechBuffer.trim());
+                        }, 500);
+                    } else {
+                        this.transcriptDisplay.textContent = this.persistentSpeechBuffer;
+                        this.updateSpeechStatus('Speech captured. Click Send or microphone again.');
+                    }
+                } else {
+                    // No significant speech captured
+                    this.updateSpeechStatus('Ready for voice input');
+                }
+                
+                this.resetSpeechUI();
+                
+                // Restart for continuous mode if enabled (after a delay)
+                if (this.continuousListening.checked && !this.speechStatus.classList.contains('processing')) {
+                    setTimeout(() => {
+                        if (this.continuousListening.checked && !this.isListening) {
+                            console.log('Restarting for continuous mode');
+                            this.startSpeechRecognition();
+                        }
+                    }, 2000);
+                }
+            }
+            
+            resetSpeechUI() {
+                this.micButton.classList.remove('listening', 'processing');
+                this.micButton.querySelector('i').className = 'fas fa-microphone';
+                
+                // Clear any pending timeouts
+                if (this.speechTimeout) {
+                    clearTimeout(this.speechTimeout);
+                    this.speechTimeout = null;
+                }
+                
+                if (!this.currentTranscript) {
+                    this.transcriptDisplay.textContent = 'Click microphone → speak → pause 3 seconds to send';
+                    this.transcriptDisplay.classList.remove('active');
+                }
+                
+                // Reset speech detection variables but keep persistent buffer if we're continuing
+                this.speechBuffer = '';
+                this.isSignificantSpeechDetected = false;
+                this.isManualStop = false;
+            }
+            
+            sendTranscriptAsMessage() {
+                if (!this.currentTranscript) return;
+                
+                // Set the transcript in the input field and send it
+                this.chatInput.value = this.currentTranscript;
+                this.sendMessage();
+                
+                // Clear all transcript buffers
+                this.currentTranscript = '';
+                this.persistentSpeechBuffer = '';
+                this.speechBuffer = '';
+                this.recognitionRestartCount = 0;
+                
+                this.transcriptDisplay.textContent = 'Message sent! Click microphone for next input.';
+                this.transcriptDisplay.classList.remove('active');
+                this.updateSpeechStatus('Ready for voice input');
+            }
+            
+            updateContinuousMode() {
+                const isEnabled = this.continuousListening.checked;
+                this.updateSpeechStatus(
+                    isEnabled ? 'Continuous mode enabled - will keep listening after 3-second pause' : 'Single-shot mode - pause 3 seconds to send, or click mic'
+                );
+            }
+            
+            updateSpeechStatus(message, type = '') {
+                this.speechStatus.textContent = message;
+                this.speechStatus.className = `speech-status ${type}`;
+                
+                if (type === 'processing') {
+                    this.micButton.classList.add('processing');
+                } else if (type === 'error') {
+                    // Show error state briefly then reset
+                    setTimeout(() => {
+                        if (!this.isListening) {
+                            this.updateSpeechStatus('Ready for voice input');
+                        }
+                    }, 3000);
+                }
+            }
+            
+            // Helper method to check if user is likely still speaking
+            isActivelySpeaking() {
+                const now = Date.now();
+                const recentWindow = 3000; // Look at last 3 seconds of activity
+                const significantActivityThreshold = 3; // Need at least 3 events to consider active
+                
+                // Remove old events outside our window
+                this.speechEvents = this.speechEvents.filter(time => now - time < recentWindow);
+                
+                // Check if we have recent speech events indicating continued talking
+                const recentEvents = this.speechEvents.length;
+                const timeSinceLastEvent = this.speechEvents.length > 0 ? now - Math.max(...this.speechEvents) : Infinity;
+                
+                // Consider actively speaking if:
+                // 1. Multiple recent speech events AND
+                // 2. Very recent activity (within 1.5 seconds)
+                const isActive = recentEvents >= significantActivityThreshold && timeSinceLastEvent < 1500;
+                
+                if (isActive) {
+                    console.log('Active speaking detected:', { recentEvents, timeSinceLastEvent });
+                }
+                
+                return isActive;
+            }
+            
+            // Track speech events with more context
+            trackSpeechEvent() {
+                const now = Date.now();
+                this.speechEvents.push(now);
+                
+                // Keep only recent events (last 10 seconds for historical analysis)
+                this.speechEvents = this.speechEvents.filter(time => now - time < 10000);
+                
+                // Limit array size to prevent memory issues
+                if (this.speechEvents.length > 50) {
+                    this.speechEvents = this.speechEvents.slice(-30);
+                }
+            }
+            
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+        
+        // Initialize chat when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new KokoroChat();
+        });
+    </script>
+</body>
+</html>

@@ -544,6 +544,12 @@ Examples:
                     <button id="toggle-auto-play" class="btn btn-outline-success">
                         <i class="fas fa-volume-up"></i> Auto-play: ON
                     </button>
+                    <button id="toggle-streaming" class="btn btn-outline-primary">
+                        <i class="fas fa-stream"></i> Streaming: ON
+                    </button>
+                    <button id="test-audio" class="btn btn-outline-info">
+                        <i class="fas fa-play"></i> Test Audio
+                    </button>
                 </div>
                 
                 <!-- Stats Panel -->
@@ -603,6 +609,11 @@ Examples:
                 this.currentContext = '';
                 this.contextApplied = false;
                 
+                // Streaming audio support
+                this.currentAudioQueue = [];
+                this.isPlayingStream = false;
+                this.streamingEnabled = true;
+                
                 // Speech recognition setup
                 this.speechRecognition = null;
                 this.isListening = false;
@@ -611,6 +622,7 @@ Examples:
                 this.initializeEventListeners();
                 this.initializeBackgroundAudio();
                 this.initializeSpeechRecognition();
+                this.enableAudioContext(); // Enable audio context immediately
                 this.loadVoices();
                 this.checkStatus();
                 
@@ -635,6 +647,8 @@ Examples:
                 document.getElementById('clear-chat').addEventListener('click', () => this.clearChat());
                 document.getElementById('save-chat').addEventListener('click', () => this.saveChat());
                 document.getElementById('toggle-auto-play').addEventListener('click', () => this.toggleAutoPlay());
+                document.getElementById('toggle-streaming').addEventListener('click', () => this.toggleStreaming());
+                document.getElementById('test-audio').addEventListener('click', () => this.testAudio());
                 
                 // Background audio controls
                 this.toggleBgButton.addEventListener('click', () => this.toggleBackgroundAudio());
@@ -677,7 +691,10 @@ Examples:
                 let messageWasSentFromSpeech = (this.currentTranscript && message === this.currentTranscript);
                 
                 try {
-                    const requestBody = { message: message };
+                    const requestBody = { 
+                        message: message,
+                        streaming: this.streamingEnabled 
+                    };
                     if (this.contextApplied && this.currentContext) {
                         requestBody.context = this.currentContext;
                     }
@@ -691,7 +708,23 @@ Examples:
                     const data = await response.json();
                     
                     if (data.success) {
-                        this.addMessage('assistant', data.ai_response, data.audio_file, data.timing);
+                        // Handle streaming vs regular response
+                        if (data.streaming && data.audio_chunks) {
+                            console.log('🚀 Received streaming response with', data.audio_chunks.length, 'chunks');
+                            console.log('📊 Streaming data:', {
+                                chunks: data.audio_chunks.length,
+                                timing: data.timing,
+                                autoPlay: this.autoPlay,
+                                streamingEnabled: this.streamingEnabled
+                            });
+                            
+                            this.addMessage('assistant', data.ai_response, null, data.timing);
+                            this.handleStreamingAudio(data.audio_chunks, data.timing);
+                        } else {
+                            console.log('📞 Received regular response');
+                            this.addMessage('assistant', data.ai_response, data.audio_file, data.timing);
+                        }
+                        
                         this.updateStats(data.timing);
                         
                         // Clear speech buffers only after successful message send from speech
@@ -872,6 +905,174 @@ Examples:
                 }
             }
             
+            handleStreamingAudio(audioChunks, timing) {
+                if (!this.autoPlay || !audioChunks || audioChunks.length === 0) {
+                    console.log('Streaming audio disabled or no chunks:', { autoPlay: this.autoPlay, chunks: audioChunks?.length });
+                    return;
+                }
+                
+                console.log('🎵 Handling streaming audio:', audioChunks.length, 'chunks');
+                
+                // Clear any existing audio queue
+                this.currentAudioQueue = [];
+                this.isPlayingStream = false;
+                
+                // Sort chunks by chunk_id to ensure proper order
+                const sortedChunks = [...audioChunks].sort((a, b) => a.chunk_id - b.chunk_id);
+                console.log('📋 Sorted chunks:', sortedChunks.map(c => `${c.chunk_id}: ${c.audio_file}`));
+                
+                // Add chunks to queue
+                this.currentAudioQueue = sortedChunks.map(chunk => ({
+                    url: `/audio/${chunk.audio_file}`,
+                    text: chunk.text,
+                    duration: chunk.duration,
+                    is_final: chunk.is_final,
+                    chunk_id: chunk.chunk_id
+                }));
+                
+                console.log('🔄 Audio queue prepared:', this.currentAudioQueue.length, 'items');
+                
+                // Start playing immediately
+                this.playNextAudioChunk();
+                
+                // Show streaming info
+                const firstChunkTime = timing.first_chunk_ready || 0;
+                const totalTime = timing.total_time || 0;
+                const streamingBenefit = totalTime - firstChunkTime;
+                
+                if (streamingBenefit > 0.5) {  // Only show if meaningful benefit
+                    this.addMessage('system', 
+                        `🚀 Streaming enabled: First audio ready ${firstChunkTime.toFixed(1)}s faster (${streamingBenefit.toFixed(1)}s improvement)`, 
+                        null, null, 'text-success small');
+                }
+            }
+            
+            playNextAudioChunk() {
+                if (this.currentAudioQueue.length === 0) {
+                    this.isPlayingStream = false;
+                    console.log('🏁 Streaming audio complete - no more chunks');
+                    return;
+                }
+                
+                if (this.isPlayingStream) {
+                    console.log('⏳ Already playing stream, waiting for current chunk to finish...');
+                    return;
+                }
+                
+                this.isPlayingStream = true;
+                const chunk = this.currentAudioQueue.shift();
+                
+                console.log('🎵 Playing audio chunk', chunk.chunk_id + ':', chunk.text.substring(0, 50) + '...');
+                console.log('🔗 Audio URL:', chunk.url);
+                
+                // Create and play audio element
+                const audio = new Audio();
+                
+                // Set up event handlers before setting src
+                audio.oncanplaythrough = () => {
+                    console.log('✅ Chunk', chunk.chunk_id, 'loaded and ready to play');
+                    audio.play().then(() => {
+                        console.log('▶️ Chunk', chunk.chunk_id, 'playback started');
+                    }).catch(e => {
+                        console.error('❌ Chunk', chunk.chunk_id, 'playback failed:', e);
+                        this.isPlayingStream = false;
+                        this.playNextAudioChunk(); // Try next chunk
+                    });
+                };
+                
+                audio.onended = () => {
+                    console.log('⏹️ Chunk', chunk.chunk_id, 'playback ended');
+                    this.isPlayingStream = false;
+                    
+                    // Small gap between chunks for natural flow
+                    setTimeout(() => {
+                        this.playNextAudioChunk();
+                    }, 150); // Slightly longer gap for better transitions
+                };
+                
+                audio.onerror = (e) => {
+                    console.error('❌ Audio chunk', chunk.chunk_id, 'error:', e);
+                    console.error('🔗 Failed URL:', chunk.url);
+                    this.isPlayingStream = false;
+                    this.playNextAudioChunk(); // Try next chunk
+                };
+                
+                audio.onloadstart = () => {
+                    console.log('🔄 Loading chunk', chunk.chunk_id, 'from:', chunk.url);
+                };
+                
+                audio.onloadeddata = () => {
+                    console.log('📁 Chunk', chunk.chunk_id, 'data loaded');
+                };
+                
+                // Set source URL to start loading
+                audio.src = chunk.url;
+                audio.load(); // Explicitly trigger loading
+                
+                // Fallback timeout in case events don't fire
+                setTimeout(() => {
+                    if (this.isPlayingStream && audio.currentTime === 0 && audio.readyState < 3) {
+                        console.warn('⏰ Audio chunk', chunk.chunk_id, 'timeout - readyState:', audio.readyState);
+                        console.warn('🔗 Timeout URL:', chunk.url);
+                        this.isPlayingStream = false;
+                        this.playNextAudioChunk();
+                    }
+                }, Math.max(5000, (chunk.duration + 3) * 1000)); // At least 5 seconds or chunk duration + buffer
+            }
+            
+            toggleStreaming() {
+                this.streamingEnabled = !this.streamingEnabled;
+                const button = document.getElementById('toggle-streaming');
+                const icon = button.querySelector('i');
+                
+                if (this.streamingEnabled) {
+                    icon.className = 'fas fa-stream';
+                    button.innerHTML = '<i class="fas fa-stream"></i> Streaming: ON';
+                    button.className = 'btn btn-outline-primary';
+                    this.addMessage('system', '🚀 Streaming TTS enabled: Audio will play as chunks are ready', null, null, 'text-info');
+                } else {
+                    icon.className = 'fas fa-pause';
+                    button.innerHTML = '<i class="fas fa-pause"></i> Streaming: OFF';
+                    button.className = 'btn btn-outline-secondary';
+                    this.addMessage('system', '⏸️ Streaming TTS disabled: Will use traditional single-file processing', null, null, 'text-info');
+                }
+            }
+            
+            testAudio() {
+                console.log('🧪 Testing audio playback...');
+                
+                // Test with a simple beep first
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.2);
+                
+                console.log('🔊 Test beep played');
+                this.addMessage('system', '🧪 Audio test: Beep played. Check if you heard it.', null, null, 'text-info');
+                
+                // Also test if we can access the audio endpoint
+                fetch('/api/status')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('📡 Server status check:', data);
+                        this.addMessage('system', `📡 Server status: ${data.success ? 'Connected' : 'Issues detected'}`, null, null, data.success ? 'text-success' : 'text-warning');
+                    })
+                    .catch(e => {
+                        console.error('📡 Server status check failed:', e);
+                        this.addMessage('system', '📡 Server connection: Failed to connect', null, null, 'text-danger');
+                    });
+            }
+            
             async checkStatus() {
                 try {
                     const response = await fetch('/api/status');
@@ -995,12 +1196,15 @@ Examples:
             }
             
             enableAudioContext() {
-                // Some browsers require user interaction to play audio
-                if (this.bgMusicEnabled && this.backgroundAudio.paused) {
-                    this.backgroundAudio.play().catch(e => {
-                        console.log('Background audio autoplay blocked:', e);
-                    });
-                }
+                // Create a silent audio element to unlock autoplay policy
+                const silentAudio = new Audio();
+                silentAudio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjy5Efj48+UbBiqNzO9zPwYMXL/o8cJ6KALHA9fywl+YSxcLUpjNx8p7JAIZacTu5pRECQ9jHfzK9tcXBy2G0fKqZBwOKKbmzWwBBQwgdcf6o2YaBR1uUf2xUAEODhBFJWYcBT3z4VZXDQlZYfCqZhsGJJ7n6dCGMQ8KSDcGdV4BBCJC5+DXfCgELY3X';
+                silentAudio.volume = 0;
+                silentAudio.play().then(() => {
+                    console.log('🔓 Audio context unlocked for autoplay');
+                }).catch(e => {
+                    console.log('⚠️ Audio context unlock failed:', e);
+                });
             }
             
             toggleBackgroundAudio() {

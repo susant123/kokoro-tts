@@ -42,11 +42,12 @@ def chat_interface():
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
-    """Chat API endpoint"""
+    """Chat API endpoint with streaming support"""
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
         context = data.get('context', '').strip()
+        enable_streaming = data.get('streaming', True)  # Default to streaming
         
         if not user_message:
             return jsonify({
@@ -57,20 +58,28 @@ def api_chat():
         # Get AI instance
         ai = get_ai_instance()
         
-        # Process the conversation with context - generate audio but don't play it
-        result = ai.chat_web(user_message, context if context else None)
+        # Use streaming if enabled, otherwise fall back to regular
+        if enable_streaming:
+            result = ai.chat_web_streaming(user_message, context if context else None)
+        else:
+            result = ai.chat_web(user_message, context if context else None)
         
         if result["success"]:
-            return jsonify({
+            response_data = {
                 "success": True,
                 "ai_response": result["ai_response"],
-                "audio_file": os.path.basename(result["audio_file"]) if result.get("audio_file") else None,
-                "timing": {
-                    "ai_time": result["ai_time"],
-                    "tts_time": result.get("tts_time", 0),
-                    "total_time": result["total_time"]
-                }
-            })
+                "timing": result["timing"]
+            }
+            
+            # Add streaming-specific data if available
+            if result.get("streaming"):
+                response_data["streaming"] = True
+                response_data["audio_chunks"] = result["audio_chunks"]
+            else:
+                response_data["streaming"] = False
+                response_data["audio_file"] = os.path.basename(result["audio_file"]) if result.get("audio_file") else None
+            
+            return jsonify(response_data)
         else:
             return jsonify({
                 "success": False,
@@ -222,16 +231,30 @@ def api_status():
 
 @app.route('/audio/<filename>')
 def serve_audio(filename):
-    """Serve audio files"""
+    """Serve audio files with detailed logging"""
     try:
         ai = get_ai_instance()
         filepath = os.path.join(ai.temp_dir, filename)
         
+        print(f"🎵 Audio request: {filename}")
+        print(f"📁 Full path: {filepath}")
+        print(f"📋 File exists: {os.path.exists(filepath)}")
+        
         if os.path.exists(filepath):
+            # Get file size for logging
+            file_size = os.path.getsize(filepath)
+            print(f"📏 File size: {file_size} bytes")
+            
             return send_file(filepath, as_attachment=False, mimetype='audio/wav')
         else:
+            print(f"❌ Audio file not found: {filename}")
+            # List available files for debugging
+            if os.path.exists(ai.temp_dir):
+                available_files = os.listdir(ai.temp_dir)
+                print(f"📂 Available audio files: {available_files[:10]}...")  # Show first 10
             return "Audio file not found", 404
     except Exception as e:
+        print(f"❌ Error serving audio {filename}: {e}")
         return f"Error serving audio: {str(e)}", 500
 
 @app.route('/static/<filename>')

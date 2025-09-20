@@ -9,12 +9,17 @@ import json
 import uuid
 import threading
 import requests
+import re
+import concurrent.futures
+import asyncio
+import queue
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
 from kokoro_onnx import Kokoro
 import soundfile as sf
 import sounddevice as sd
+import numpy as np
 
 # Enable GPU acceleration
 os.environ["ONNX_PROVIDER"] = "CUDAExecutionProvider"
@@ -27,6 +32,16 @@ class ConversationMessage:
     timestamp: datetime
     audio_file: Optional[str] = None
     voice: Optional[str] = None
+    audio_chunks: Optional[List[str]] = None  # For streaming audio chunks
+
+@dataclass
+class AudioChunk:
+    """Represents a chunk of audio for streaming"""
+    chunk_id: int
+    text: str
+    audio_file: str
+    duration: float
+    is_final: bool = False
 
 class ConversationalAI:
     """Main conversational AI system"""
@@ -172,6 +187,285 @@ class ConversationalAI:
         text = text.strip()
         
         return text
+    
+    def split_text_for_streaming(self, text: str, max_chunk_size: int = 200) -> List[str]:
+        """
+        Intelligently split text into chunks suitable for streaming TTS.
+        Respects sentence boundaries, paragraphs, and natural speech pauses.
+        """
+        # Clean the text first
+        clean_text = self.clean_text_for_tts(text).strip()
+        if not clean_text:
+            return []
+        
+        chunks = []
+        
+        # First, split by major boundaries (paragraphs, line breaks)
+        major_sections = re.split(r'\n\s*\n|\n\s*[-*•]\s*|\n\d+\.\s*', clean_text)
+        
+        for section in major_sections:
+            section = section.strip()
+            if not section:
+                continue
+                
+            # If section is small enough, add it as a chunk
+            if len(section) <= max_chunk_size:
+                chunks.append(section)
+                continue
+            
+            # Split by sentences, but keep related sentences together
+            sentences = self._split_into_sentences(section)
+            
+            current_chunk = ""
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if not sentence:
+                    continue
+                
+                # If adding this sentence would exceed limit, save current chunk
+                if current_chunk and len(current_chunk + " " + sentence) > max_chunk_size:
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                    current_chunk = sentence
+                else:
+                    if current_chunk:
+                        current_chunk += " " + sentence
+                    else:
+                        current_chunk = sentence
+                
+                # If single sentence is too long, split it further
+                if len(current_chunk) > max_chunk_size * 1.5:  # Allow some flexibility
+                    sub_chunks = self._split_long_sentence(current_chunk, max_chunk_size)
+                    chunks.extend(sub_chunks[:-1])  # Add all but last
+                    current_chunk = sub_chunks[-1] if sub_chunks else ""
+            
+            # Add remaining text
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+        
+        # Clean up empty chunks and ensure reasonable minimum length
+        final_chunks = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if chunk and len(chunk) >= 5:  # Minimum chunk length
+                final_chunks.append(chunk)
+        
+        return final_chunks
+    
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """Split text into sentences, handling common abbreviations"""
+        # Common abbreviations that shouldn't trigger sentence splits
+        abbreviations = r'\b(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr|Inc|Ltd|Corp|Co|etc|vs|i\.e|e\.g|a\.m|p\.m|U\.S|U\.K)\.'
+        
+        # Temporarily replace abbreviations
+        temp_text = re.sub(abbreviations, lambda m: m.group().replace('.', '§TEMP§'), text, flags=re.IGNORECASE)
+        
+        # Split on sentence boundaries
+        sentences = re.split(r'[.!?]+\s+', temp_text)
+        
+        # Restore abbreviations and clean up
+        sentences = [s.replace('§TEMP§', '.').strip() for s in sentences if s.strip()]
+        
+        return sentences
+    
+    def _split_long_sentence(self, sentence: str, max_size: int) -> List[str]:
+        """Split a long sentence at natural pause points"""
+        if len(sentence) <= max_size:
+            return [sentence]
+        
+        # Try to split at commas, semicolons, or conjunctions
+        pause_patterns = [
+            r',\s+(?=\w)',  # Commas
+            r';\s+',        # Semicolons  
+            r'\s+(?:and|but|or|however|therefore|moreover|furthermore|meanwhile|consequently)\s+',  # Conjunctions
+            r'\s+(?:which|that|who|where|when)\s+',  # Relative pronouns
+        ]
+        
+        for pattern in pause_patterns:
+            parts = re.split(f'({pattern})', sentence)
+            if len(parts) > 1:
+                chunks = []
+                current = ""
+                
+                for i, part in enumerate(parts):
+                    if i % 2 == 0:  # Text part
+                        if current and len(current + part) > max_size:
+                            if current:
+                                chunks.append(current.strip())
+                            current = part
+                        else:
+                            current += part
+                    else:  # Separator part
+                        current += part
+                
+                if current:
+                    chunks.append(current.strip())
+                
+                # If we got reasonable chunks, return them
+                if len(chunks) > 1 and all(len(c) <= max_size * 1.2 for c in chunks):
+                    return [c for c in chunks if c.strip()]
+        
+        # Last resort: split by words
+        words = sentence.split()
+        chunks = []
+        current = ""
+        
+        for word in words:
+            if current and len(current + " " + word) > max_size:
+                if current:
+                    chunks.append(current.strip())
+                current = word
+            else:
+                if current:
+                    current += " " + word
+                else:
+                    current = word
+        
+        if current:
+            chunks.append(current.strip())
+        
+        return chunks
+    
+    def generate_tts_audio_streaming(self, text: str, voice: str = None) -> List[AudioChunk]:
+        """
+        Generate TTS audio with streaming support - processes chunks in parallel
+        and returns them as they become available for immediate playback.
+        """
+        if voice is None:
+            voice = self.tts_voice
+        
+        # Split text into chunks
+        text_chunks = self.split_text_for_streaming(text)
+        if not text_chunks:
+            return []
+        
+        print(f"🎤 Streaming TTS: Split into {len(text_chunks)} chunks")
+        for i, chunk in enumerate(text_chunks):
+            preview = chunk[:50] + ('...' if len(chunk) > 50 else '')
+            print(f"  Chunk {i+1}: {preview}")
+        
+        audio_chunks = []
+        start_time = time.time()
+        
+        # Use ThreadPoolExecutor for parallel processing
+        max_workers = min(4, len(text_chunks))  # Limit concurrent TTS processes
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all chunks for processing
+            future_to_chunk = {
+                executor.submit(self._generate_chunk_audio, chunk_text, i, voice): i 
+                for i, chunk_text in enumerate(text_chunks)
+            }
+            
+            # Process chunks as they complete
+            completed_count = 0
+            
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                chunk_index = future_to_chunk[future]
+                
+                try:
+                    audio_chunk = future.result()
+                    if audio_chunk:
+                        audio_chunks.append(audio_chunk)
+                        completed_count += 1
+                        
+                        elapsed = time.time() - start_time
+                        print(f"✅ Chunk {chunk_index + 1}/{len(text_chunks)} ready ({elapsed:.1f}s)")
+                        
+                        # Mark as final chunk if it's the last one
+                        if completed_count == len(text_chunks):
+                            audio_chunk.is_final = True
+                        
+                    else:
+                        print(f"❌ Failed to generate chunk {chunk_index + 1}")
+                        
+                except Exception as e:
+                    print(f"❌ Error processing chunk {chunk_index + 1}: {e}")
+        
+        # Sort chunks by their original order
+        audio_chunks.sort(key=lambda x: x.chunk_id)
+        
+        total_time = time.time() - start_time
+        print(f"🎤 Streaming TTS complete: {len(audio_chunks)} chunks in {total_time:.1f}s")
+        
+        return audio_chunks
+    
+    def _generate_chunk_audio(self, text: str, chunk_id: int, voice: str) -> Optional[AudioChunk]:
+        """Generate audio for a single text chunk"""
+        try:
+            # Generate audio using the existing method logic
+            audio_data = self.kokoro.create(text, voice=voice, speed=self.tts_speed, lang="en-us")
+            
+            # Handle audio data format (same logic as existing method)
+            import numpy as np
+            
+            if isinstance(audio_data, (tuple, list)):
+                if len(audio_data) == 2:
+                    first_elem, second_elem = audio_data
+                    if isinstance(first_elem, np.ndarray) or hasattr(first_elem, '__array__'):
+                        audio_data = first_elem
+                    elif isinstance(second_elem, np.ndarray) or hasattr(second_elem, '__array__'):
+                        audio_data = second_elem
+                    else:
+                        audio_data = np.array(first_elem, dtype=np.float32)
+                elif len(audio_data) == 1:
+                    audio_data = audio_data[0]
+                else:
+                    # Find audio candidate
+                    audio_candidate = None
+                    for elem in audio_data:
+                        if isinstance(elem, np.ndarray) and elem.size > 100:
+                            audio_candidate = elem
+                            break
+                    audio_data = audio_candidate if audio_candidate is not None else audio_data[0]
+            
+            # Convert to numpy array
+            if not isinstance(audio_data, np.ndarray):
+                audio_data = np.array(audio_data, dtype=np.float32)
+            
+            # Handle multi-dimensional arrays
+            if audio_data.ndim > 1:
+                if audio_data.shape[1] == 1:
+                    audio_data = audio_data.flatten()
+                elif audio_data.shape[0] == 1:
+                    audio_data = audio_data[0]
+                else:
+                    audio_data = audio_data[:, 0]
+            
+            # Ensure proper format
+            audio_data = np.asarray(audio_data, dtype=np.float32)
+            
+            # Normalize if needed
+            max_val = np.max(np.abs(audio_data))
+            if max_val > 1.0:
+                audio_data = audio_data / max_val
+            
+            # Validate
+            if len(audio_data) == 0:
+                raise ValueError("Empty audio data")
+            if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
+                raise ValueError("Invalid audio data")
+            
+            # Save chunk audio file
+            timestamp = int(time.time() * 1000)  # Use milliseconds for uniqueness
+            filename = f"chunk_{self.conversation_id}_{chunk_id}_{timestamp}.wav"
+            filepath = os.path.join(self.temp_dir, filename)
+            
+            sf.write(filepath, audio_data, 24000, format="WAV")
+            
+            # Calculate duration
+            duration = len(audio_data) / 24000.0
+            
+            return AudioChunk(
+                chunk_id=chunk_id,
+                text=text,
+                audio_file=filepath,
+                duration=duration
+            )
+            
+        except Exception as e:
+            print(f"❌ Chunk {chunk_id} TTS failed: {e}")
+            return None
     
     def generate_tts_audio(self, text: str, voice: str = None) -> Optional[str]:
         """Generate TTS audio for given text"""
@@ -376,14 +670,15 @@ class ConversationalAI:
         except Exception as e:
             print(f"❌ Audio playback failed: {e}")
     
-    def add_message(self, role: str, content: str, audio_file: str = None, voice: str = None):
+    def add_message(self, role: str, content: str, audio_file: str = None, voice: str = None, audio_chunks: List[str] = None):
         """Add message to conversation history"""
         message = ConversationMessage(
             role=role,
             content=content,
             timestamp=datetime.now(),
             audio_file=audio_file,
-            voice=voice
+            voice=voice,
+            audio_chunks=audio_chunks
         )
         self.conversation_history.append(message)
     
@@ -436,6 +731,76 @@ class ConversationalAI:
                 "total_time": ai_time,
                 "error": "TTS generation failed"
             }
+    
+    def chat_web_streaming(self, user_input: str, context: str = None) -> Dict:
+        """
+        Chat function with streaming support for web interface.
+        Returns immediate response with streaming audio chunks.
+        """
+        print(f"\n👤 You: {user_input}")
+        if context:
+            print(f"🧠 Context: {context[:100]}{'...' if len(context) > 100 else ''}")
+        
+        # Add user message to history
+        self.add_message("user", user_input)
+        
+        # Get AI response with context
+        print("🤔 AI is thinking...")
+        start_time = time.time()
+        ai_response = self.get_ai_response(user_input, context)
+        ai_time = time.time() - start_time
+        
+        print(f"🤖 AI ({ai_time:.1f}s): {ai_response}")
+        
+        # Generate streaming TTS audio
+        print("🎤 Generating streaming speech...")
+        tts_start_time = time.time()
+        
+        try:
+            audio_chunks = self.generate_tts_audio_streaming(ai_response)
+            
+            if audio_chunks:
+                # Calculate total TTS time
+                tts_time = time.time() - tts_start_time
+                
+                # Prepare chunk information for frontend
+                chunk_info = []
+                for chunk in audio_chunks:
+                    chunk_info.append({
+                        "chunk_id": chunk.chunk_id,
+                        "text": chunk.text,
+                        "audio_file": os.path.basename(chunk.audio_file),
+                        "duration": chunk.duration,
+                        "is_final": chunk.is_final
+                    })
+                
+                print(f"✅ Streaming speech generated ({tts_time:.1f}s)")
+                
+                # Add AI message with streaming audio chunks to history
+                chunk_files = [chunk.audio_file for chunk in audio_chunks]
+                self.add_message("assistant", ai_response, None, self.tts_voice, chunk_files)
+                
+                return {
+                    "success": True,
+                    "ai_response": ai_response,
+                    "streaming": True,
+                    "audio_chunks": chunk_info,
+                    "timing": {
+                        "ai_time": ai_time,
+                        "tts_time": tts_time,
+                        "total_time": ai_time + tts_time,
+                        "first_chunk_ready": min([c.duration for c in audio_chunks]) if audio_chunks else tts_time
+                    }
+                }
+            else:
+                # Fallback to regular TTS if streaming fails
+                print("⚠️ Streaming TTS failed, falling back to regular TTS...")
+                return self.chat_web(user_input, context)
+                
+        except Exception as e:
+            print(f"❌ Streaming TTS error: {e}")
+            # Fallback to regular TTS
+            return self.chat_web(user_input, context)
     
     def chat(self, user_input: str, play_audio: bool = True) -> Dict:
         """Main chat function"""

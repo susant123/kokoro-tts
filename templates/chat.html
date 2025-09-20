@@ -620,11 +620,11 @@ Examples:
             
             initializeEventListeners() {
                 // Send message
-                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.sendButton.addEventListener('click', () => this.handleSendClick());
                 this.chatInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        this.sendMessage();
+                        this.handleSendClick();
                     }
                 });
                 
@@ -650,6 +650,17 @@ Examples:
                 this.clearContextButton.addEventListener('click', () => this.clearContext());
             }
             
+            handleSendClick() {
+                // If there's no text in the input but we have a current transcript from speech,
+                // use the speech transcript
+                if (!this.chatInput.value.trim() && this.currentTranscript) {
+                    console.log('Using captured speech transcript for manual send:', this.currentTranscript);
+                    this.chatInput.value = this.currentTranscript;
+                }
+                
+                this.sendMessage();
+            }
+            
             async sendMessage() {
                 const message = this.chatInput.value.trim();
                 if (!message) return;
@@ -662,6 +673,8 @@ Examples:
                 
                 // Show typing indicator
                 this.showTypingIndicator();
+                
+                let messageWasSentFromSpeech = (this.currentTranscript && message === this.currentTranscript);
                 
                 try {
                     const requestBody = { message: message };
@@ -680,6 +693,11 @@ Examples:
                     if (data.success) {
                         this.addMessage('assistant', data.ai_response, data.audio_file, data.timing);
                         this.updateStats(data.timing);
+                        
+                        // Clear speech buffers only after successful message send from speech
+                        if (messageWasSentFromSpeech) {
+                            this.clearSpeechBuffers();
+                        }
                     } else {
                         this.addMessage('system', `Error: ${data.error}`, null, null, 'text-danger');
                     }
@@ -1031,7 +1049,7 @@ Examples:
                     this.lastSpeechTime = 0;
                     this.lastSignificantSpeechTime = 0;  // Track when we last had significant speech
                     this.speechTimeout = null;
-                    this.silenceThreshold = 6000; // Increased to 6 seconds for very conservative detection
+                    this.silenceThreshold = 2000; // 2 seconds for speech-to-send detection
                     this.minimumSpeechLength = 8; // Minimum characters before considering significant speech
                     this.speechBuffer = '';  // Buffer to accumulate speech within a session
                     this.persistentSpeechBuffer = ''; // Persistent buffer across recognition restarts
@@ -1046,7 +1064,6 @@ Examples:
                     this.speechRecognition.onerror = (event) => this.onSpeechError(event);
                     this.speechRecognition.onend = () => this.onSpeechEnd();
                     
-                    this.updateSpeechStatus('Speech recognition ready - pause 3 seconds to send message');
                 } else {
                     this.updateSpeechStatus('Speech recognition not supported in this browser', 'error');
                     this.micButton.disabled = true;
@@ -1159,18 +1176,22 @@ Examples:
                         displayTranscript += (displayTranscript ? ' ' : '') + interimTranscript.trim();
                     }
                     
-                    // Update the display
-                    this.transcriptDisplay.textContent = displayTranscript || 'Listening...';
+                    // Update the display ONLY if we're not currently processing a previous result
+                    if (!this.speechStatus.classList.contains('processing')) {
+                        this.transcriptDisplay.textContent = displayTranscript || 'Listening...';
+                    }
                     
                     // Check if we have significant accumulated speech
                     if (displayTranscript.trim().length >= this.minimumSpeechLength) {
                         this.isSignificantSpeechDetected = true;
                         this.lastSignificantSpeechTime = Date.now();
                         
-                        // Show we're capturing speech
-                        const preview = displayTranscript.length > 50 ? 
-                            displayTranscript.substring(0, 50) + '...' : displayTranscript;
-                        this.updateSpeechStatus(`Capturing: "${preview}"`, 'listening');
+                        // Show we're capturing speech ONLY if not already processing
+                        if (!this.speechStatus.classList.contains('processing')) {
+                            const preview = displayTranscript.length > 50 ? 
+                                displayTranscript.substring(0, 50) + '...' : displayTranscript;
+                            this.updateSpeechStatus(`Capturing: "${preview}"`, 'listening');
+                        }
                     }
                     
                     // Clear any existing timeout
@@ -1181,24 +1202,27 @@ Examples:
                     
                     // ONLY set timeout for final results when we have significant speech
                     // AND user isn't actively continuing to speak
-                    if (finalTranscript && this.isSignificantSpeechDetected) {
+                    // AND we're not already processing
+                    if (finalTranscript && this.isSignificantSpeechDetected && !this.speechStatus.classList.contains('processing')) {
                         // Use a longer delay and check for continued activity
                         this.speechTimeout = setTimeout(() => {
                             const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
                             const hasRecentActivity = this.isActivelySpeaking();
                             
-                            // Only send if truly quiet for the full threshold period
-                            if (timeSinceLastSpeech >= this.silenceThreshold && !hasRecentActivity) {
+                            // Only send if truly quiet for the full threshold period AND not currently processing
+                            if (timeSinceLastSpeech >= this.silenceThreshold && !hasRecentActivity && !this.speechStatus.classList.contains('processing')) {
                                 console.log('Confirmed silence - processing complete speech:', this.persistentSpeechBuffer);
                                 this.processSpeechResult(this.persistentSpeechBuffer);
                             } else {
-                                console.log('Still active or too recent - not sending yet');
+                                console.log('Still active or too recent or already processing - not sending yet');
                             }
                         }, this.silenceThreshold);
                     }
                 } else {
-                    // No new transcript but show what we have accumulated
-                    this.transcriptDisplay.textContent = this.persistentSpeechBuffer || 'Listening...';
+                    // No new transcript but show what we have accumulated (if not processing)
+                    if (!this.speechStatus.classList.contains('processing')) {
+                        this.transcriptDisplay.textContent = this.persistentSpeechBuffer || 'Listening...';
+                    }
                 }
             }
             
@@ -1219,13 +1243,17 @@ Examples:
                 
                 console.log('Processing complete speech result:', cleanTranscript);
                 
-                // Store for potential sending
+                // Store for potential sending - PRESERVE the transcript
                 this.currentTranscript = cleanTranscript;
                 
                 // Update UI to processing state
                 this.updateSpeechStatus('Processing speech...', 'processing');
                 this.micButton.classList.remove('listening');
                 this.micButton.classList.add('processing');
+                
+                // Update display immediately to show final transcript
+                this.transcriptDisplay.textContent = cleanTranscript;
+                this.transcriptDisplay.classList.add('active');
                 
                 // Clear any pending timeouts
                 if (this.speechTimeout) {
@@ -1244,24 +1272,21 @@ Examples:
                     }
                 }
                 
-                // Reset all speech buffers since we're processing this complete result
-                this.speechBuffer = '';
-                this.persistentSpeechBuffer = '';
-                this.isSignificantSpeechDetected = false;
-                this.recognitionRestartCount = 0;
-                this.speechEvents = []; // Clear activity tracking
-                
                 // Auto-send if enabled, otherwise prepare for manual send
                 if (this.autoSendSpeech.checked) {
                     console.log('Auto-sending processed speech');
                     setTimeout(() => {
                         this.sendTranscriptAsMessage();
+                        // ONLY clear buffers AFTER successful send
+                        this.clearSpeechBuffers();
                     }, 300); // Brief delay for UI feedback
                 } else {
                     // Manual mode - show transcript and wait for user action
                     this.transcriptDisplay.textContent = cleanTranscript;
+                    this.transcriptDisplay.classList.add('active');
                     this.updateSpeechStatus('Speech ready. Click Send to submit or microphone for more input.');
                     this.resetSpeechUI();
+                    // Don't clear buffers in manual mode until after send
                 }
             }
             
@@ -1385,8 +1410,9 @@ Examples:
                     this.speechTimeout = null;
                 }
                 
+                // Only reset display if no current transcript is being processed/shown
                 if (!this.currentTranscript) {
-                    this.transcriptDisplay.textContent = 'Click microphone → speak → pause 3 seconds to send';
+                    this.transcriptDisplay.textContent = 'Click microphone → speak → pause 2 seconds to send';
                     this.transcriptDisplay.classList.remove('active');
                 }
                 
@@ -1401,23 +1427,33 @@ Examples:
                 
                 // Set the transcript in the input field and send it
                 this.chatInput.value = this.currentTranscript;
+                console.log('Sending transcript as message:', this.currentTranscript);
+                
+                // Send the message
                 this.sendMessage();
                 
-                // Clear all transcript buffers
-                this.currentTranscript = '';
-                this.persistentSpeechBuffer = '';
-                this.speechBuffer = '';
-                this.recognitionRestartCount = 0;
-                
+                // Update display to show message was sent
                 this.transcriptDisplay.textContent = 'Message sent! Click microphone for next input.';
                 this.transcriptDisplay.classList.remove('active');
                 this.updateSpeechStatus('Ready for voice input');
             }
             
+            clearSpeechBuffers() {
+                // Clear all speech-related buffers and state
+                this.currentTranscript = '';
+                this.persistentSpeechBuffer = '';
+                this.speechBuffer = '';
+                this.recognitionRestartCount = 0;
+                this.speechEvents = [];
+                this.isSignificantSpeechDetected = false;
+                
+                console.log('Speech buffers cleared');
+            }
+            
             updateContinuousMode() {
                 const isEnabled = this.continuousListening.checked;
                 this.updateSpeechStatus(
-                    isEnabled ? 'Continuous mode enabled - will keep listening after 3-second pause' : 'Single-shot mode - pause 3 seconds to send, or click mic'
+                    isEnabled ? 'Continuous mode enabled - will keep listening after 2-second pause' : 'Single-shot mode - pause 2 seconds to send, or click mic'
                 );
             }
             
@@ -1440,7 +1476,7 @@ Examples:
             // Helper method to check if user is likely still speaking
             isActivelySpeaking() {
                 const now = Date.now();
-                const recentWindow = 3000; // Look at last 3 seconds of activity
+                const recentWindow = 2000; // Look at last 2 seconds of activity
                 const significantActivityThreshold = 3; // Need at least 3 events to consider active
                 
                 // Remove old events outside our window

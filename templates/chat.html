@@ -299,6 +299,16 @@
             overflow: hidden;
         }
         
+        .mic-button:not(.listening):not(.processing) {
+            background: #28a745;
+            color: white;
+        }
+        
+        .mic-button:not(.listening):not(.processing):hover {
+            background: #20c997;
+            transform: scale(1.05);
+        }
+        
         .mic-button.listening {
             background: #dc3545;
             color: white;
@@ -308,16 +318,6 @@
         .mic-button.processing {
             background: #ffc107;
             color: white;
-        }
-        
-        .mic-button:not(.listening):not(.processing) {
-            background: #28a745;
-            color: white;
-        }
-        
-        .mic-button:hover:not(.listening) {
-            background: #20c997;
-            transform: scale(1.05);
         }
         
         @keyframes pulse {
@@ -550,6 +550,9 @@ Examples:
                     <button id="test-audio" class="btn btn-outline-info">
                         <i class="fas fa-play"></i> Test Audio
                     </button>
+                    <button id="stop-audio" class="btn btn-outline-danger">
+                        <i class="fas fa-stop"></i> Stop Audio
+                    </button>
                 </div>
                 
                 <!-- Stats Panel -->
@@ -613,6 +616,8 @@ Examples:
                 this.currentAudioQueue = [];
                 this.isPlayingStream = false;
                 this.streamingEnabled = true;
+                this.currentAudioElement = null; // Track currently playing audio
+                this.globalAudioQueue = []; // Global queue for all audio requests
                 
                 // Speech recognition setup
                 this.speechRecognition = null;
@@ -625,6 +630,9 @@ Examples:
                 this.enableAudioContext(); // Enable audio context immediately
                 this.loadVoices();
                 this.checkStatus();
+                
+                // Force reset microphone button to default state
+                this.resetMicrophoneButton();
                 
                 // Auto-scroll to bottom
                 this.scrollToBottom();
@@ -649,6 +657,7 @@ Examples:
                 document.getElementById('toggle-auto-play').addEventListener('click', () => this.toggleAutoPlay());
                 document.getElementById('toggle-streaming').addEventListener('click', () => this.toggleStreaming());
                 document.getElementById('test-audio').addEventListener('click', () => this.testAudio());
+                document.getElementById('stop-audio').addEventListener('click', () => this.stopAllAudio());
                 
                 // Background audio controls
                 this.toggleBgButton.addEventListener('click', () => this.toggleBackgroundAudio());
@@ -772,6 +781,9 @@ Examples:
                 
                 // Add audio player if available
                 if (audioFile && this.autoPlay) {
+                    // Stop any currently playing audio first
+                    this.stopAllAudio();
+                    
                     const audioDiv = document.createElement('div');
                     audioDiv.className = 'message-audio';
                     audioDiv.innerHTML = `
@@ -780,6 +792,27 @@ Examples:
                         </audio>
                     `;
                     messageDiv.appendChild(audioDiv);
+                    
+                    // Track this audio element for stopping if needed
+                    const audioElement = audioDiv.querySelector('audio');
+                    if (audioElement) {
+                        this.currentAudioElement = audioElement;
+                        
+                        audioElement.onplay = () => {
+                            this.updateAudioControls();
+                        };
+                        
+                        audioElement.onended = () => {
+                            if (this.currentAudioElement === audioElement) {
+                                this.currentAudioElement = null;
+                                this.updateAudioControls();
+                            }
+                        };
+                        
+                        audioElement.onpause = () => {
+                            this.updateAudioControls();
+                        };
+                    }
                 }
                 
                 this.messagesContainer.appendChild(messageDiv);
@@ -870,6 +903,9 @@ Examples:
                         
                         // Also clear context when chat is cleared
                         this.clearContext();
+                        
+                        // Reset microphone button state
+                        this.resetMicrophoneButton();
                     }
                 } catch (error) {
                     console.error('Failed to clear chat:', error);
@@ -913,8 +949,12 @@ Examples:
                 
                 console.log('🎵 Handling streaming audio:', audioChunks.length, 'chunks');
                 
+                // Stop any currently playing audio to prevent overlap
+                this.stopAllAudio();
+                
                 // Clear any existing audio queue
                 this.currentAudioQueue = [];
+                this.globalAudioQueue = [];
                 this.isPlayingStream = false;
                 
                 // Sort chunks by chunk_id to ensure proper order
@@ -950,6 +990,7 @@ Examples:
             playNextAudioChunk() {
                 if (this.currentAudioQueue.length === 0) {
                     this.isPlayingStream = false;
+                    this.currentAudioElement = null;
                     console.log('🏁 Streaming audio complete - no more chunks');
                     return;
                 }
@@ -967,34 +1008,53 @@ Examples:
                 
                 // Create and play audio element
                 const audio = new Audio();
+                this.currentAudioElement = audio; // Track current audio element
                 
                 // Set up event handlers before setting src
                 audio.oncanplaythrough = () => {
+                    // Double-check we should still be playing this audio (might have been stopped)
+                    if (this.currentAudioElement !== audio) {
+                        console.log('🚫 Chunk', chunk.chunk_id, 'cancelled - newer audio started');
+                        return;
+                    }
+                    
                     console.log('✅ Chunk', chunk.chunk_id, 'loaded and ready to play');
                     audio.play().then(() => {
                         console.log('▶️ Chunk', chunk.chunk_id, 'playback started');
+                        this.updateAudioControls(); // Update visual state
                     }).catch(e => {
                         console.error('❌ Chunk', chunk.chunk_id, 'playback failed:', e);
                         this.isPlayingStream = false;
+                        this.currentAudioElement = null;
                         this.playNextAudioChunk(); // Try next chunk
                     });
                 };
                 
                 audio.onended = () => {
-                    console.log('⏹️ Chunk', chunk.chunk_id, 'playback ended');
-                    this.isPlayingStream = false;
-                    
-                    // Small gap between chunks for natural flow
-                    setTimeout(() => {
-                        this.playNextAudioChunk();
-                    }, 150); // Slightly longer gap for better transitions
+                    // Only process if this is still the current audio
+                    if (this.currentAudioElement === audio) {
+                        console.log('⏹️ Chunk', chunk.chunk_id, 'playback ended');
+                        this.isPlayingStream = false;
+                        this.currentAudioElement = null;
+                        this.updateAudioControls(); // Update visual state
+                        
+                        // Small gap between chunks for natural flow
+                        setTimeout(() => {
+                            this.playNextAudioChunk();
+                        }, 150); // Slightly longer gap for better transitions
+                    }
                 };
                 
                 audio.onerror = (e) => {
                     console.error('❌ Audio chunk', chunk.chunk_id, 'error:', e);
                     console.error('🔗 Failed URL:', chunk.url);
-                    this.isPlayingStream = false;
-                    this.playNextAudioChunk(); // Try next chunk
+                    
+                    // Only process if this is still the current audio
+                    if (this.currentAudioElement === audio) {
+                        this.isPlayingStream = false;
+                        this.currentAudioElement = null;
+                        this.playNextAudioChunk(); // Try next chunk
+                    }
                 };
                 
                 audio.onloadstart = () => {
@@ -1011,10 +1071,11 @@ Examples:
                 
                 // Fallback timeout in case events don't fire
                 setTimeout(() => {
-                    if (this.isPlayingStream && audio.currentTime === 0 && audio.readyState < 3) {
+                    if (this.currentAudioElement === audio && this.isPlayingStream && audio.currentTime === 0 && audio.readyState < 3) {
                         console.warn('⏰ Audio chunk', chunk.chunk_id, 'timeout - readyState:', audio.readyState);
                         console.warn('🔗 Timeout URL:', chunk.url);
                         this.isPlayingStream = false;
+                        this.currentAudioElement = null;
                         this.playNextAudioChunk();
                     }
                 }, Math.max(5000, (chunk.duration + 3) * 1000)); // At least 5 seconds or chunk duration + buffer
@@ -1071,6 +1132,82 @@ Examples:
                         console.error('📡 Server status check failed:', e);
                         this.addMessage('system', '📡 Server connection: Failed to connect', null, null, 'text-danger');
                     });
+            }
+            
+            stopAllAudio() {
+                console.log('🛑 Stopping all audio playback');
+                
+                // Stop current streaming audio
+                if (this.currentAudioElement) {
+                    console.log('🛑 Stopping current audio element');
+                    this.currentAudioElement.pause();
+                    this.currentAudioElement.currentTime = 0;
+                    this.currentAudioElement = null;
+                }
+                
+                // Clear all audio queues
+                this.currentAudioQueue = [];
+                this.globalAudioQueue = [];
+                this.isPlayingStream = false;
+                
+                // Stop any other audio elements that might be playing
+                const audioElements = document.querySelectorAll('audio');
+                audioElements.forEach(audio => {
+                    if (!audio.paused) {
+                        console.log('🛑 Stopping audio element:', audio.src);
+                        audio.pause();
+                        audio.currentTime = 0;
+                    }
+                });
+                
+                // Stop background audio if it's playing
+                if (this.backgroundAudio && !this.backgroundAudio.paused) {
+                    // Don't stop background audio as it's meant to keep playing
+                    console.log('🎵 Background audio continues (intentional)');
+                }
+                
+                // Show user feedback
+                this.addMessage('system', '🛑 All audio playback stopped', null, null, 'text-warning small');
+                
+                // Update stop button visual state
+                this.updateAudioControls();
+            }
+            
+            updateAudioControls() {
+                const stopButton = document.getElementById('stop-audio');
+                const isPlaying = this.isPlayingStream || (this.currentAudioElement && !this.currentAudioElement.paused);
+                
+                if (isPlaying) {
+                    stopButton.className = 'btn btn-danger';
+                    stopButton.innerHTML = '<i class="fas fa-stop"></i> Stop Playing';
+                } else {
+                    stopButton.className = 'btn btn-outline-danger';
+                    stopButton.innerHTML = '<i class="fas fa-stop"></i> Stop Audio';
+                }
+            }
+            
+            resetMicrophoneButton() {
+                console.log('🎤 Resetting microphone button to default state');
+                if (this.micButton) {
+                    this.micButton.classList.remove('listening', 'processing');
+                    this.micButton.querySelector('i').className = 'fas fa-microphone';
+                    this.micButton.title = 'Click to start voice input';
+                }
+                
+                // Reset speech recognition state
+                this.isListening = false;
+                this.isManualStop = false;
+                
+                // Reset display
+                if (this.transcriptDisplay) {
+                    this.transcriptDisplay.textContent = 'Click microphone → speak → pause 2 seconds to send';
+                    this.transcriptDisplay.classList.remove('active');
+                }
+                
+                // Update status
+                if (this.speechStatus) {
+                    this.updateSpeechStatus('Ready for voice input');
+                }
             }
             
             async checkStatus() {
@@ -1307,10 +1444,10 @@ Examples:
             onSpeechStart() {
                 this.isListening = true;
                 this.micButton.classList.add('listening');
-                this.micButton.querySelector('i').className = 'fas fa-stop';
+                this.micButton.classList.remove('processing');
+                this.micButton.querySelector('i').className = 'fas fa-microphone-slash';
                 
                 // Clear processing state from previous sessions
-                this.micButton.classList.remove('processing');
                 this.speechStatus.classList.remove('processing');
                 
                 // Determine if this is a fresh start or continuation
@@ -1454,6 +1591,7 @@ Examples:
                 this.updateSpeechStatus('Processing speech...', 'processing');
                 this.micButton.classList.remove('listening');
                 this.micButton.classList.add('processing');
+                this.micButton.querySelector('i').className = 'fas fa-cog fa-spin';
                 
                 // Update display immediately to show final transcript
                 this.transcriptDisplay.textContent = cleanTranscript;
